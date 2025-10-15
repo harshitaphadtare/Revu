@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import fetch_reviews,analyze
+from .routes import fetch_reviews,analyze
 
 app = FastAPI(
     title="Revu API",
