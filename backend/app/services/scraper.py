@@ -130,7 +130,7 @@ def scrape_flipkart_reviews(url: str, max_pages: int = 2) -> List[SingleReview]:
     Returns:
         List[SingleReview]: A list of scraped reviews.
     """
-    reviews: List[SingleReview] = []
+    reviews: List[SingleReview] = []  
     print(f"Starting scrape for URL: {url}")
 
     with sync_playwright() as p:
