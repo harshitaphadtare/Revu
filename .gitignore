@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# Playwright
+.cache/
+.ms-playwright/
+
+# Node/Frontend
+node_modules/
+dist/
+.next/
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
