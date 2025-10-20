@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: revu-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: revu-backend
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: revu-worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SCRAPER_MAX_REVIEWS=300
+    depends_on:
+      - redis
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "--pool=solo"]

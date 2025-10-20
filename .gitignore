@@ -1,28 +1,45 @@
-# Python
+# Python bytecode and caches
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
-*.egg-info/
-.eggs/
 
-# Environments
+# pytest cache
+.pytest_cache/
+
+# virtualenvs
 .venv/
 venv/
 ENV/
+env/
 
-# Playwright
+# packaging/build artifacts
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Playwright caches / browsers
 .cache/
 .ms-playwright/
 
-# Node/Frontend
+# Node / frontend
 node_modules/
 dist/
 .next/
+build/
 
-# Editors/OS
+# logs/temp
+*.log
+tmp/
+temp/
+
+# IDE/editor
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# OS files
 .DS_Store
 Thumbs.db
