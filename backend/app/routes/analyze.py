@@ -21,9 +21,10 @@ def analyze_reviews(payload: AnalyzeRequest):
     positive_themes = topic_extractor.extract_keywords(positive_texts)
     negative_themes = topic_extractor.extract_keywords(negative_texts)
 
-    # 4.Summary
+    # 4.Summary (both short and descriptive)
     all_clean_texts = [r['clean_text'] for r in sentiments]
-    summary = summarizer.generate_summary(all_clean_texts)
+    summary_short = summarizer.generate_summary(all_clean_texts, mode="short")
+    summary = summarizer.generate_summary(all_clean_texts, mode="descriptive")
 
     # 5. Trend data 
     trend_data = []
@@ -46,5 +47,6 @@ def analyze_reviews(payload: AnalyzeRequest):
         "top_negative_themes": negative_themes,
         "trend_data": trend_data,
         "reviews": sentiments,
-        "summary": summary
+        "summary": summary,
+        "summary_short": summary_short
     }

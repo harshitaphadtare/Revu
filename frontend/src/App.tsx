@@ -4,61 +4,115 @@ import { HomePage } from "./components/HomePage";
 import { DashboardPage } from "./components/DashboardPage";
 import { AuthPage } from "./components/AuthPage";
 import { ProfilePage } from "./components/ProfilePage";
+import { ScrapingActivityPage } from "./components/ScrapingActivityPage";
+import { HistoryPage } from "./components/HistoryPage";
 
 export default function App() {
-  const navigate = useNavigate();
   const [isDark, setIsDark] = useState(false);
+  const navigate = useNavigate();
 
-  const handleAnalyze = (url: string) => {
-    console.log("Analyzing URL:", url);
+  const handleAnalyze = (_url: string) => {
+    // Route to scraping activity to show progress
+    navigate("/scraping-activity");
+  };
+
+  const handleReset = () => {
+    navigate("/");
+  };
+
+  const handleGetStarted = () => {
+    navigate("/auth");
+  };
+
+  const handleBackToHome = () => {
+    navigate("/");
   };
 
   const handleThemeToggle = () => {
-    setIsDark(!isDark);
+    setIsDark((v) => !v);
+  };
+
+  const handleGoToProfile = () => {
+    navigate("/profile");
+  };
+
+  const handleBackToDashboard = () => {
+    navigate("/dashboard");
   };
 
   const handleLogout = () => {
-    // implement auth clear if needed
+    navigate("/");
   };
 
   return (
-      <div
-        className={`size-full ${isDark ? "dark" : ""}`}
-        style={{ fontFamily: "Inter, system-ui, sans-serif" }}
-      >
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <HomePage
-                onAnalyze={handleAnalyze}
-                onGetStarted={() => navigate("/signin")}
-                onThemeToggle={handleThemeToggle}
-                isDark={isDark}
-              />
-            }
-          />
-          <Route
-            path="/signin"
-            element={<AuthPage onBack={() => navigate("/")} isDark={isDark} />}
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <DashboardPage
-                onReset={() => navigate("/")}
-                onThemeToggle={handleThemeToggle}
-                onProfileClick={() => navigate("/profile")}
-                isDark={isDark}
-              />
-            }
-          />
-          <Route
-            path="/profile"
-            element={<ProfilePage onBack={() => navigate("/dashboard")} onLogout={handleLogout} isDark={isDark} />}
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
+    <div
+      className={`size-full ${isDark ? "dark" : ""}`}
+      style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+    >
+      <Routes>
+        {/* Home at / and /home */}
+        <Route
+          path="/"
+          element={
+            <HomePage
+              onAnalyze={handleAnalyze}
+              onGetStarted={handleGetStarted}
+              onThemeToggle={handleThemeToggle}
+              isDark={isDark}
+            />
+          }
+        />
+        <Route
+          path="/home"
+          element={
+            <HomePage
+              onAnalyze={handleAnalyze}
+              onGetStarted={handleGetStarted}
+              onThemeToggle={handleThemeToggle}
+              isDark={isDark}
+            />
+          }
+        />
+
+        {/* New pages */}
+        <Route
+          path="/scraping-activity"
+          element={
+            <ScrapingActivityPage
+              isDark={isDark}
+              onThemeToggle={handleThemeToggle}
+              onGetStarted={handleGetStarted}
+            />
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <HistoryPage
+              isDark={isDark}
+              onThemeToggle={handleThemeToggle}
+              onGetStarted={handleGetStarted}
+            />
+          }
+        />
+
+        {/* Existing pages kept for compatibility */}
+        <Route
+          path="/auth"
+          element={<AuthPage onBack={handleBackToHome} isDark={isDark} />}
+        />
+        <Route
+          path="/profile"
+          element={<ProfilePage onBack={handleBackToDashboard} onLogout={handleLogout} isDark={isDark} />}
+        />
+        <Route
+          path="/dashboard"
+          element={<DashboardPage onReset={handleReset} onThemeToggle={handleThemeToggle} onProfileClick={handleGoToProfile} isDark={isDark} />}
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
   );
 }

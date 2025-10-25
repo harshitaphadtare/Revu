@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import analyze, fetch_review_job
+from .routes import analyze, fetch_review_job, auth
+from .db.mongodb import init_db
 
 app = FastAPI(
     title="Revu API",
@@ -9,6 +10,7 @@ app = FastAPI(
 
 app.include_router(analyze.router)
 app.include_router(fetch_review_job.router)
+app.include_router(auth.router)
 
 @app.get("/")
 def home():
@@ -23,5 +25,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def on_startup():
+    # Ensure DB indexes are created
+    await init_db()
 
     

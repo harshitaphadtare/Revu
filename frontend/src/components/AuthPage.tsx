@@ -60,7 +60,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
 
   return (
     <div 
-      className="min-h-screen flex items-center justify-center p-4"
+      className="fixed inset-0 flex items-center justify-center p-3"
       style={{ backgroundColor: colors.background }}
     >
       {/* Auth Card */}
@@ -68,28 +68,29 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4 }}
-        className="w-full max-w-md"
+        className="w-full"
+        style={{ width: 'min(90vw, 400px)' }}
       >
         <div 
-          className="rounded-3xl shadow-2xl p-8"
+          className="rounded-3xl shadow-md p-5 md:p-5 max-h-[calc(100vh-3rem)] overflow-auto relative"
           style={{ 
             backgroundColor: colors.cardBg,
             border: `1px solid ${colors.inputBorder}`
           }}
         >
           {/* Header with back button */}
-          <div className="flex items-center mb-8">
+          <div className="mb-4">
             <motion.button
-              whileHover={{ scale: 1.1, x: -2 }}
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={onBack}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
+              className="w-8 h-8 rounded-md flex items-center justify-center transition-colors"
               style={{ 
                 backgroundColor: isDark ? "#2A2A2A" : "#F3F4F6",
                 color: colors.text 
               }}
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" />
             </motion.button>
           </div>
 
@@ -100,12 +101,13 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
             transition={{ delay: 0.1 }}
             className="text-center mb-8"
           >
-            <h1 
-              className="text-3xl mb-3" 
-              style={{ 
-                fontFamily: "Lexend, sans-serif", 
+            <h1
+              className="text-xl mb-2"
+              style={{
+                fontFamily: "Lexend, sans-serif",
                 fontWeight: 700,
-                color: colors.text
+                color: colors.text,
+                letterSpacing: "0.03em",
               }}
             >
               REVU
@@ -124,7 +126,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
             onSubmit={handleSubmit}
-            className="space-y-4 mb-6"
+            className="space-y-3 mb-4"
           >
             {mode === "signup" && (
               <motion.div
@@ -137,7 +139,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
                   placeholder="Full Name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl transition-all text-sm placeholder-opacity-100"
+                  className="w-full px-2 py-1.5 rounded-md transition-all text-sm placeholder-opacity-100 h-9"
                   style={{
                     backgroundColor: colors.inputBg,
                     border: `1px solid ${colors.inputBorder}`,
@@ -158,7 +160,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl transition-all text-sm"
+              className="w-full px-2 py-1.5 rounded-md transition-all text-sm h-9"
               style={{
                 backgroundColor: colors.inputBg,
                 border: `1px solid ${colors.inputBorder}`,
@@ -173,7 +175,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl transition-all text-sm pr-12"
+                className="w-full px-2 py-1.5 rounded-md transition-all text-sm pr-9 h-9"
                 style={{
                   backgroundColor: colors.inputBg,
                   border: `1px solid ${colors.inputBorder}`,
@@ -184,13 +186,13 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
                 style={{ color: colors.inputText }}
               >
                 {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
+                  <EyeOff className="w-4 h-4" />
                 ) : (
-                  <Eye className="w-5 h-5" />
+                  <Eye className="w-4 h-4" />
                 )}
               </button>
             </div>
@@ -205,7 +207,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               <div className="text-right">
                 <button
                   type="button"
-                  className="text-sm transition-colors hover:opacity-80"
+                  className="text-xs transition-colors hover:opacity-80"
                   style={{ color: colors.subtext }}
                 >
                   Forgot Password?
@@ -214,55 +216,21 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
             )}
 
             {/* Submit Button */}
-            <motion.div 
-              className="pt-2"
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <motion.div className="relative group">
-                <motion.div
-                  className="absolute -inset-0.5 rounded-xl blur opacity-40 group-hover:opacity-60 transition duration-300"
-                  style={{
-                    background: "linear-gradient(90deg, #8B5CF6, #3B82F6)",
-                  }}
-                  animate={{
-                    backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                  }}
-                  transition={{
-                    duration: 3,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="relative w-full px-6 py-3 rounded-xl text-white transition-all duration-300 overflow-hidden group flex items-center justify-center"
-                  style={{
-                    background: "linear-gradient(90deg, #8B5CF6, #3B82F6)",
-                  }}
-                >
-                  {/* Shimmer effect */}
-                  <motion.div
-                    className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100"
-                    style={{
-                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)"
-                    }}
-                    animate={{
-                      x: ["-100%", "200%"]
-                    }}
-                    transition={{
-                      duration: 1.5,
-                      repeat: Infinity,
-                      repeatDelay: 0.5,
-                      ease: "easeInOut"
-                    }}
-                  />
-                  <span className="relative z-10">
-                    {mode === "login" ? "Login" : "Create Account"}
-                  </span>
-                </button>
-              </motion.div>
-            </motion.div>
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="relative w-full px-4 py-2 rounded-md text-white transition-all duration-200 flex items-center justify-center text-sm"
+                style={{
+                  background: "linear-gradient(90deg, #7C3AED, #3B82F6)",
+                  boxShadow: isDark ? '0 6px 18px rgba(59,130,246,0.06)' : '0 6px 18px rgba(124,58,237,0.12)'
+                }}
+                onClick={(e) => e.currentTarget.blur()}
+              >
+                <span className="relative z-10">
+                  {mode === "login" ? "Login" : "Create Account"}
+                </span>
+              </button>
+            </div>
           </motion.form>
 
           {/* Divider */}
@@ -292,7 +260,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               type="button"
-              className="w-full px-4 py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 text-sm"
+              className="w-full px-3 py-2 rounded-md transition-all duration-200 flex items-center justify-center gap-3 text-sm"
               style={{
                 backgroundColor: colors.oauthBg,
                 border: `1px solid ${colors.oauthBorder}`,
@@ -324,7 +292,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               type="button"
-              className="w-full px-4 py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 text-sm"
+              className="w-full px-3 py-2 rounded-md transition-all duration-200 flex items-center justify-center gap-3 text-sm"
               style={{
                 backgroundColor: colors.oauthBg,
                 border: `1px solid ${colors.oauthBorder}`,

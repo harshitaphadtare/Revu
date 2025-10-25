@@ -82,6 +82,20 @@ def scrape_status(job_id: str):
                 "count": None,
                 "error": None,
             }
+        if state == "REVOKED":
+            try:
+                redis_client.delete(LOCK_KEY)
+                redis_client.delete(f"{LOCK_KEY}:task")
+            except Exception:
+                pass
+            return {
+                "job_id": job_id,
+                "state": "REVOKED",
+                "progress": meta.get("progress", 0),
+                "result": None,
+                "count": None,
+                "error": meta.get("error"),
+            }
         if state == "FAILURE":
             try:
                 redis_client.delete(LOCK_KEY)
@@ -164,6 +178,13 @@ def cancel_scrape(job_id: str):
         from app.worker import celery_app
         res = AsyncResult(job_id, app=celery_app)
         res.revoke(terminate=False)
+    except Exception:
+        pass
+
+    # Proactively release the single-job lock to allow a new job to start promptly
+    try:
+        redis_client.delete(LOCK_KEY)
+        redis_client.delete(f"{LOCK_KEY}:task")
     except Exception:
         pass
 

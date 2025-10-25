@@ -1999,6 +1999,16 @@
     color: var(--primary-foreground);
   }
 
+  /* Global: show pointer cursor for interactive buttons */
+  button, input[type="button"], input[type="submit"], [role="button"] {
+    cursor: pointer;
+  }
+
+  /* Preserve default cursor for disabled controls */
+  button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled {
+    cursor: default;
+  }
+
   .file\:inline-flex::file-selector-button {
     display: inline-flex;
   }

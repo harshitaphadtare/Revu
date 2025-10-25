@@ -1,10 +1,7 @@
-from unittest.mock import patch
-
 from app.services.sentiment import analyze_sentiment
 
 
-@patch("app.services.sentiment._get_transformers_pipeline", return_value=None)
-def test_sentiment_positive_fallback(_mock_pipe):
+def test_sentiment_positive_fallback():
 	reviews = [{"clean_text": "This phone is excellent and I love it!"}]
 	res = analyze_sentiment(reviews)
 	assert len(res) == 1
@@ -12,8 +9,7 @@ def test_sentiment_positive_fallback(_mock_pipe):
 	assert 0.5 <= res[0]["score"] <= 1.0
 
 
-@patch("app.services.sentiment._get_transformers_pipeline", return_value=None)
-def test_sentiment_negative_fallback(_mock_pipe):
+def test_sentiment_negative_fallback():
 	reviews = [{"clean_text": "Terrible battery and the worst camera. I hate it."}]
 	res = analyze_sentiment(reviews)
 	assert len(res) == 1
@@ -21,8 +17,7 @@ def test_sentiment_negative_fallback(_mock_pipe):
 	assert 0.5 <= res[0]["score"] <= 1.0
 
 
-@patch("app.services.sentiment._get_transformers_pipeline", return_value=None)
-def test_sentiment_neutral_when_no_cues(_mock_pipe):
+def test_sentiment_neutral_when_no_cues():
 	reviews = [{"clean_text": ""}]
 	res = analyze_sentiment(reviews)
 	assert len(res) == 1
@@ -31,8 +26,7 @@ def test_sentiment_neutral_when_no_cues(_mock_pipe):
 	assert 0.0 <= res[0]["score"] <= 0.5
 
 
-@patch("app.services.sentiment._get_transformers_pipeline", return_value=None)
-def test_sentiment_uses_rating_when_available(_mock_pipe):
+def test_sentiment_uses_rating_when_available():
 	# High rating should map to POSITIVE
 	reviews = [
 		{"clean_text": "", "rating": 5},
@@ -43,8 +37,7 @@ def test_sentiment_uses_rating_when_available(_mock_pipe):
 	assert [r["sentiment"] for r in res] == ["POSITIVE", "NEGATIVE", "NEUTRAL"]
 
 
-@patch("app.services.sentiment._get_transformers_pipeline", return_value=None)
-def test_sentiment_batch_size_preserved(_mock_pipe):
+def test_sentiment_batch_size_preserved():
 	reviews = [
 		{"clean_text": "good camera and excellent display"},
 		{"clean_text": "bad battery and worst heating"},

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Package, User, Search, Download, Save, RotateCcw, Github } from "lucide-react";
+import { Package, User, Search, Download, Save, RotateCcw, Sparkles } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -185,12 +185,25 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
             </span>
           </motion.div>
           
-          {/* Right side - Theme Toggle + Profile */}
+          {/* Right side - New Analysis + Theme Toggle + Profile (New Analysis is first) */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-4"
           >
+            <div>
+              <Button
+                className="rounded-sm px-4 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm hover:shadow-md flex items-center gap-2"
+                onClick={() => {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  onReset();
+                }}
+              >
+                <Sparkles className="w-3 h-3" />
+                New Analysis
+              </Button>
+            </div>
+
             <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
             <Button 
               variant="outline" 
@@ -699,7 +712,7 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
           >
             <Button 
               size="lg" 
-              className="rounded-2xl px-10 py-6 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+              className="rounded-2xl px-10 py-6 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-sm hover:shadow-md transition-all duration-300"
             >
               <Download className="w-5 h-5 mr-2" />
               Export as PDF
@@ -707,7 +720,7 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
             <Button 
               size="lg" 
               variant="outline" 
-              className="rounded-2xl px-10 py-6 border-2 border-border dark:border-zinc-700 text-foreground dark:text-white hover:bg-accent/20 dark:hover:bg-zinc-800 shadow-sm hover:shadow-md transition-all duration-300"
+              className="rounded-2xl px-10 py-6 border-2 border-border dark:border-zinc-700 text-foreground dark:text-white hover:bg-accent/20 dark:hover:bg-zinc-800 shadow-xs hover:shadow-sm transition-all duration-300"
             >
               <Save className="w-5 h-5 mr-2" />
               Save Data
@@ -715,7 +728,7 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
             <Button 
               size="lg" 
               variant="outline" 
-              className="rounded-2xl px-10 py-6 border-2 border-border dark:border-zinc-700 text-foreground dark:text-white hover:bg-accent/20 dark:hover:bg-zinc-800 shadow-sm hover:shadow-md transition-all duration-300"
+              className="rounded-2xl px-10 py-6 border-2 border-border dark:border-zinc-700 text-foreground dark:text-white hover:bg-accent/20 dark:hover:bg-zinc-800 shadow-xs hover:shadow-sm transition-all duration-300"
               onClick={onReset}
             >
               <RotateCcw className="w-5 h-5 mr-2" />

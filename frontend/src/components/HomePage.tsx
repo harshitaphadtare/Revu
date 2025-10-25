@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
-import { AnalysisLoader } from "./AnalysisLoader";
 import { useState, useRef } from "react";
+import { NavLink } from "react-router-dom";
+import { SiteHeader } from "./layout/SiteHeader";
 
 interface HomePageProps {
   onAnalyze: (url: string) => void;
@@ -19,20 +20,13 @@ interface RippleType {
 
 export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: HomePageProps) {
   const [url, setUrl] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [ripples, setRipples] = useState<RippleType[]>([]);
   const rippleIdRef = useRef(0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAnalyzing) {
-      setIsAnalyzing(true);
-      // Show loader for ~5 seconds (matching the progress animation)
-      setTimeout(() => {
-        onAnalyze(url || "https://example.com/product");
-        setIsAnalyzing(false);
-      }, 5000);
-    }
+    // Directly trigger analyze with provided URL (no overlay component)
+    onAnalyze(url || "https://example.com/product");
   };
 
   const createRipple = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -57,9 +51,6 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
 
   return (
     <>
-      {/* Show Analysis Loader when analyzing */}
-      {isAnalyzing && <AnalysisLoader isDark={isDark} />}
-      
       <div 
         className="min-h-screen flex flex-col"
         style={{
@@ -119,75 +110,7 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
         </div>
 
         {/* Header */}
-        <header 
-          className="relative z-50 backdrop-blur-xl border-b"
-          style={{
-            backgroundColor: isDark ? "rgba(0, 0, 0, 0.6)" : "rgba(250, 250, 250, 0.6)",
-            borderColor: isDark ? "rgba(42, 42, 42, 0.5)" : "rgba(228, 228, 231, 0.5)"
-          }}
-        >
-          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <span 
-                className="text-2xl tracking-wider" 
-                style={{ 
-                  fontFamily: "Lexend, sans-serif", 
-                  fontWeight: 700,
-                  color: isDark ? "#FFFFFF" : undefined
-                }}
-              >
-                REVU
-              </span>
-            </motion.div>
-            
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              className="flex items-center gap-4"
-            >
-              <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
-              <motion.button
-                whileHover={{ scale: 1.02 }} 
-                whileTap={{ scale: 0.97 }}
-                onClick={onGetStarted}
-                className="relative overflow-hidden rounded-full px-6 py-2.5 transition-all duration-300 group"
-                style={{
-                  backgroundColor: isDark ? "#FFFFFF" : "#0a0a0a",
-                  color: isDark ? "#000000" : "#fafafa",
-                  border: "none",
-                  boxShadow: isDark 
-                    ? "0 1px 3px 0 rgba(255, 255, 255, 0.1)" 
-                    : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)"
-                }}
-              >
-                <span className="relative z-10">Get Started</span>
-                {/* Shimmer effect */}
-                <motion.div
-                  className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100"
-                  style={{
-                    background: isDark 
-                      ? "linear-gradient(90deg, transparent, rgba(0,0,0,0.1), transparent)"
-                      : "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)"
-                  }}
-                  animate={{
-                    x: ["-100%", "200%"]
-                  }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    repeatDelay: 0.5,
-                    ease: "easeInOut"
-                  }}
-                />
-              </motion.button>
-            </motion.div>
-          </div>
-        </header>
+        <SiteHeader isDark={isDark} onThemeToggle={onThemeToggle} onGetStarted={onGetStarted} />
 
         {/* Hero Section */}
         <main className="relative flex-1 flex items-center justify-center">
@@ -369,9 +292,8 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
                     />
                     <Button
                       type="submit"
-                      disabled={isAnalyzing}
                       onClick={createRipple}
-                      className="relative overflow-hidden px-10 py-6 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-xl transition-all duration-300 disabled:opacity-90"
+                      className="relative overflow-hidden px-10 py-6 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-xl transition-all duration-300"
                     >
                       {/* Ripple effects */}
                       <AnimatePresence>
@@ -410,35 +332,7 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
                       />
 
                       {/* Button content */}
-                      <span className="relative z-10 flex items-center gap-2">
-                        {isAnalyzing ? (
-                          <>
-                            Analyzing
-                            <span className="flex gap-1">
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ duration: 1, repeat: Infinity, delay: 0 }}
-                              >
-                                .
-                              </motion.span>
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
-                              >
-                                .
-                              </motion.span>
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
-                              >
-                                .
-                              </motion.span>
-                            </span>
-                          </>
-                        ) : (
-                          "Analyze Reviews"
-                        )}
-                      </span>
+                      <span className="relative z-10 flex items-center gap-2">Analyze Reviews</span>
 
                       {/* Intensify background on click */}
                       <motion.div

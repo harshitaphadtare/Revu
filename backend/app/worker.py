@@ -1,6 +1,7 @@
 import os
 import json
-from typing import List
+from typing import List, Any
+from datetime import date, datetime
 from celery import Celery, states
 from celery.utils.log import get_task_logger
 from app.services.scraper import scrape_reviews
@@ -31,6 +32,9 @@ def _meta_key(task_id: str) -> str:
 def _result_key(task_id: str) -> str:
     return f"revu:task:{task_id}:result"
 
+def _cancel_key(task_id: str) -> str:
+    return f"revu:task:{task_id}:cancel"
+
 
 def _serialize_reviews(reviews) -> List[dict]:
     """Convert Pydantic models (SingleReview) to plain dicts for Celery results."""
@@ -39,11 +43,22 @@ def _serialize_reviews(reviews) -> List[dict]:
         try:
             # Support Pydantic v2 .model_dump(); fallback to __dict__
             if hasattr(r, "model_dump"):
-                out.append(r.model_dump())
+                entry = r.model_dump()
             elif hasattr(r, "dict"):
-                out.append(r.dict())
+                entry = r.dict()
             else:
-                out.append(dict(r))
+                entry = dict(r)
+            # Ensure any date/datetime objects are converted to ISO strings
+            def _make_serializable(obj: Any) -> Any:
+                if isinstance(obj, (date, datetime)):
+                    return obj.isoformat()
+                if isinstance(obj, dict):
+                    return {k: _make_serializable(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_make_serializable(i) for i in obj]
+                return obj
+            entry = _make_serializable(entry)
+            out.append(entry)
         except Exception:
             out.append({
                 "review_text": getattr(r, "review_text", None),
@@ -75,6 +90,32 @@ def run_scraper_task(self, url: str) -> dict:
             pass
 
         def _update(pct: int):
+            # Cooperative cancellation: check cancel flag
+            try:
+                if redis_client.get(_cancel_key(task_id)):
+                    # Mark as cancelled (use FAILURE state with explicit message for simplicity)
+                    try:
+                        redis_client.set(_meta_key(task_id), json.dumps({"state": "FAILURE", "progress": pct, "error": "cancelled by user"}), ex=60 * 60 * 24)
+                    except Exception:
+                        pass
+                    # Release lock if owned by this task
+                    try:
+                        owner = redis_client.get(LOCK_TASK_KEY)
+                        if owner == task_id:
+                            redis_client.delete(LOCK_KEY)
+                            redis_client.delete(LOCK_TASK_KEY)
+                    except Exception:
+                        pass
+                    # Update Celery task state and abort
+                    try:
+                        self.update_state(state=states.FAILURE, meta={"exc": "cancelled by user"})
+                    except Exception:
+                        pass
+                    raise Exception("cancelled by user")
+            except Exception:
+                # If any error occurs during cancel check, proceed with normal update
+                pass
+
             # Update Celery state (optional) and persist progress in Redis as JSON
             try:
                 self.update_state(state="PROGRESS", meta={"progress": pct})
@@ -113,12 +154,15 @@ def run_scraper_task(self, url: str) -> dict:
             )
             serialized = _serialize_reviews(reviews)
             result_payload = {"count": len(serialized), "reviews": serialized, "product": product_meta}
-            # Persist final result and meta
+            # Persist final result and meta (log before/after for debugging)
             try:
+                logger.info("Writing final result to Redis for task %s (count=%d)", task_id, len(serialized))
                 redis_client.set(_result_key(task_id), json.dumps(result_payload), ex=60 * 60 * 24)
+                logger.info("Result written, now writing SUCCESS meta for task %s", task_id)
                 redis_client.set(_meta_key(task_id), json.dumps({"state": "SUCCESS", "progress": 100}), ex=60 * 60 * 24)
-            except Exception:
-                pass
+                logger.info("SUCCESS meta written for task %s", task_id)
+            except Exception as ex_write:
+                logger.exception("Failed to write final result/meta for task %s: %s", task_id, ex_write)
             # Release the lock only if it still belongs to this task
             try:
                 owner = redis_client.get(LOCK_TASK_KEY)

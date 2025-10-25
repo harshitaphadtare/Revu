@@ -20,7 +20,8 @@ def get_headers():
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Gecko/20100101 Firefox/119.0"
     ]
-    return {"User-Agent": random.choice(user_agents)}
+    # include Accept-Language to reduce localization redirects/variations
+    return {"User-Agent": random.choice(user_agents), "Accept-Language": "en-US,en;q=0.9"}
 
 # Amazon Scraper
 def scrape_amazon_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional[int] = None, progress_cb: Optional[Callable[[int], None]] = None) -> tuple:
@@ -50,7 +51,76 @@ def scrape_amazon_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional
                 break
 
             soup = BeautifulSoup(response.text, "html.parser")
-            review_blocks = soup.select(".review") or soup.select(".a-section.review.aok-relative")
+            # Try a few common Amazon review selectors (data-hook is reliable)
+            review_blocks = (
+                soup.select('div[data-hook="review"]')
+                or soup.select('.a-section.review')
+                or soup.select('.review')
+                or soup.select('.a-section.review.aok-relative')
+            )
+
+            # If we didn't find reviews on the provided URL, try to locate the "See all reviews" / product-reviews page
+            if not review_blocks and idx == 1:
+                try:
+                    # Common 'see all reviews' link selectors
+                    all_reviews_anchor = (
+                        soup.select_one('a[data-hook="see-all-reviews-link-foot"]')
+                        or soup.find('a', string=lambda t: t and 'See all reviews' in t)
+                        or soup.find('a', href=lambda h: h and 'product-reviews' in h)
+                    )
+                    if all_reviews_anchor and all_reviews_anchor.get('href'):
+                        reviews_href = all_reviews_anchor.get('href')
+                        reviews_url = reviews_href if reviews_href.startswith('http') else urljoin(url, reviews_href)
+                        # fetch the reviews page and re-parse
+                        r2 = requests.get(reviews_url, headers=get_headers(), timeout=10)
+                        if r2.status_code == 200:
+                            soup = BeautifulSoup(r2.text, 'html.parser')
+                            review_blocks = (
+                                soup.select('div[data-hook="review"]')
+                                or soup.select('.a-section.review')
+                                or soup.select('.review')
+                                or soup.select('.a-section.review.aok-relative')
+                            )
+                            # update page_url so pagination links constructed later work
+                            page_url = reviews_url
+                except Exception:
+                    pass
+
+            # If reviews are present but appear truncated (has 'Read more' expander), use Playwright to expand them
+            try:
+                truncated = False
+                for b in review_blocks:
+                    if b.select_one('a.a-expander-prompt') or 'Read more' in (b.get_text() or ''):
+                        truncated = True
+                        break
+                if review_blocks and truncated:
+                    try:
+                        with sync_playwright() as p:
+                            browser = p.chromium.launch(headless=True)
+                            page_ctx = browser.new_page()
+                            page_ctx.goto(page_url, timeout=20000)
+                            # Click all expander prompts to reveal full review bodies
+                            try:
+                                page_ctx.evaluate("() => { document.querySelectorAll('a.a-expander-prompt').forEach(e => e.click()); }")
+                                page_ctx.wait_for_timeout(500)
+                            except Exception:
+                                pass
+                            html2 = page_ctx.content()
+                            soup = BeautifulSoup(html2, 'html.parser')
+                            review_blocks = (
+                                soup.select('div[data-hook="review"]')
+                                or soup.select('.a-section.review')
+                                or soup.select('.review')
+                                or soup.select('.a-section.review.aok-relative')
+                            )
+                            try:
+                                browser.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             # extract metadata on first page
             if idx == 1:
@@ -64,9 +134,21 @@ def scrape_amazon_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional
                 product_meta.update(price_parsed)
 
             for block in review_blocks:
-                text_elem = block.select_one(".review-text-content span")
-                rating_elem = block.select_one(".a-icon-alt")
-                date_elem = block.select_one(".review-date")
+                # multiple possible body/rating/date selectors
+                text_elem = (
+                    block.select_one('span[data-hook="review-body"]')
+                    or block.select_one('.review-text-content span')
+                    or block.select_one('.a-size-base.review-text')
+                )
+                rating_elem = (
+                    block.select_one('i[data-hook="review-star-rating"]')
+                    or block.select_one('.a-icon-alt')
+                    or block.select_one('i.a-icon.a-icon-star')
+                )
+                date_elem = (
+                    block.select_one('span[data-hook="review-date"]')
+                    or block.select_one('.review-date')
+                )
 
                 review_text = text_elem.get_text(strip=True) if text_elem else ""
                 rating = float(rating_elem.get_text(strip=True).split()[0]) if rating_elem else None
@@ -82,8 +164,9 @@ def scrape_amazon_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional
                             review_date = None
 
                 if review_text:
+                    cleaned = _clean_review_text(review_text)
                     reviews.append(SingleReview(
-                        review_text=review_text,
+                        review_text=cleaned,
                         rating=rating,
                         review_date=review_date
                     ))
@@ -197,6 +280,22 @@ def _parse_price_string(price_str: Optional[str]):
             val = None
         return {"price": s, "price_value": val, "currency": None}
     return {"price": s, "price_value": None, "currency": None}
+
+
+def _clean_review_text(text: Optional[str]) -> str:
+    """Normalize and clean extracted review text.
+
+    Removes common trailing fragments like 'Read more', ellipses, and extra whitespace.
+    Returns a stripped string.
+    """
+    if not text:
+        return ""
+    s = text.strip()
+    # Normalize whitespace
+    s = re.sub(r"\s+", " ", s)
+    # Remove trailing ellipses/Read more variants (case-insensitive). Handles '...Read more', '…Read more', 'Read more', etc.
+    s = re.sub(r"(?i)(?:\u2026|\.\.\.|…)?\s*read\s*more[\s»…]*$", "", s)
+    return s.strip()
 
 
 def scrape_flipkart_reviews(
@@ -410,8 +509,9 @@ def scrape_flipkart_reviews(
 
                 review_date = _parse_date_string(date_str)
 
+                cleaned = _clean_review_text(review_text)
                 reviews.append(SingleReview(
-                    review_text=review_text,
+                    review_text=cleaned,
                     rating=rating,
                     review_date=review_date
                 ))
