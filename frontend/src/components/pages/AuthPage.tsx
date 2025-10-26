@@ -1,25 +1,54 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { apiSignin, apiSignup } from "@/lib/api";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useToast } from "@/hooks/useToast";
 
 interface AuthPageProps {
   onBack: () => void;
   isDark: boolean;
+  mode?: "login" | "signup"; // optional override from route
 }
 
-export function AuthPage({ onBack, isDark }: AuthPageProps) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+export function AuthPage({ onBack, isDark, mode: routeMode }: AuthPageProps) {
+  const [mode, setMode] = useState<"login" | "signup">(routeMode || "login");
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  // keep local mode in sync if routeMode changes (e.g., navigating between /auth/login and /auth/signup)
+  useEffect(() => {
+    setMode(routeMode || "login");
+  }, [routeMode]);
+  const { success } = useToast();
+  const searchParams = new URLSearchParams(location.search);
   
   // Form states
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(mode === "login" ? "Logging in..." : "Creating account...");
-    // Add your authentication logic here
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (mode === "login") {
+        await apiSignin({ email, password });
+        success("Login Successful!");
+      } else {
+        await apiSignup({ name: fullName || undefined, email, password });
+        success("Account created!");
+      }
+      const redirect = searchParams.get("redirect") || "/";
+      navigate(redirect);
+    } catch (err: any) {
+      setError(err?.message || "Authentication failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Light mode colors (matching the design exactly)
@@ -215,6 +244,15 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
               </div>
             )}
 
+            {error && (
+              <div
+                className="text-xs rounded-md px-3 py-2"
+                style={{ backgroundColor: isDark ? "#2A1B1B" : "#FEE2E2", color: isDark ? "#FCA5A5" : "#991B1B", border: `1px solid ${isDark ? "#7F1D1D" : "#FCA5A5"}` }}
+              >
+                {error}
+              </div>
+            )}
+
             {/* Submit Button */}
             <div className="pt-2">
               <button
@@ -227,7 +265,7 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
                 onClick={(e) => e.currentTarget.blur()}
               >
                 <span className="relative z-10">
-                  {mode === "login" ? "Login" : "Create Account"}
+                  {submitting ? (mode === "login" ? "Logging in..." : "Creating account...") : (mode === "login" ? "Login" : "Create Account")}
                 </span>
               </button>
             </div>
@@ -313,7 +351,11 @@ export function AuthPage({ onBack, isDark }: AuthPageProps) {
             </span>
             <button
               type="button"
-              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              onClick={() => {
+                const base = mode === "login" ? "/auth/signup" : "/auth/login";
+                const redirect = searchParams.get("redirect");
+                navigate(redirect ? `${base}?redirect=${encodeURIComponent(redirect)}` : base);
+              }}
               className="transition-all hover:underline"
               style={{ 
                 color: colors.linkText,

@@ -1,11 +1,11 @@
 import { motion } from "motion/react";
 import { ArrowLeft, Camera, X, Eye, Trash2, Download, Search, User, LogOut } from "lucide-react";
-import { Button } from "./ui/button";
-import { Card } from "./ui/card";
-import { Input } from "./ui/input";
-import { Badge } from "./ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState } from "react";
 
 interface ProfilePageProps {
@@ -97,19 +97,6 @@ export function ProfilePage({ onBack, onLogout, isDark }: ProfilePageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black">
-      {/* Header */}
-      <header className="bg-white dark:bg-[#0a0a0a] border-b border-gray-200 dark:border-zinc-800">
-        <div className="container mx-auto px-6 py-4">
-          <Button
-            variant="ghost"
-            onClick={onBack}
-            className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white -ml-2"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Back</span>
-          </Button>
-        </div>
-      </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8 max-w-6xl">

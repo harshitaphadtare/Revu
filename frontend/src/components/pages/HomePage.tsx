@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "motion/react";
-import { ThemeToggle } from "./ThemeToggle";
-import { Button } from "./ui/button";
+import { ThemeToggle } from "@/components/utils/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { useState, useRef } from "react";
 import { NavLink } from "react-router-dom";
-import { SiteHeader } from "./layout/SiteHeader";
+// SiteHeader is now rendered at app root
+import { isAuthenticated } from "@/lib/auth";
 
 interface HomePageProps {
   onAnalyze: (url: string) => void;
@@ -109,8 +110,7 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
           />
         </div>
 
-        {/* Header */}
-        <SiteHeader isDark={isDark} onThemeToggle={onThemeToggle} onGetStarted={onGetStarted} />
+  {/* Header (rendered at app root) */}
 
         {/* Hero Section */}
         <main className="relative flex-1 flex items-center justify-center">
