@@ -191,6 +191,8 @@ Revu/
 - `POST /auth/signup` - User registration
 - `POST /auth/signin` - User login
 - `GET /auth/me` - Get current user (requires Bearer token)
+- `PATCH /api/me` - Update profile (name/email; requires Bearer token; changing email marks it unverified)
+- `POST /api/auth/change-password` - Change password (requires Bearer token and current password)
 
 ### Analysis
 
@@ -213,6 +215,7 @@ Revu/
 cd backend
 # Activate virtual environment first
 python -m pytest tests/
+python -m pytest tests/test_account_routes.py  # profile & password endpoints
 ```
 
 ### Frontend Build
