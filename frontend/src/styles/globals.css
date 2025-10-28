@@ -4,6 +4,8 @@
 
 :root {
   --font-size: 16px;
+
+  /* ===== Light Theme Variables ===== */
   --background: #fafafa;
   --foreground: #0a0a0a;
   --card: #ffffff;
@@ -24,15 +26,19 @@
   --input: transparent;
   --input-background: #f4f4f5;
   --switch-background: #d4d4d8;
+  --ring: #0a0a0a;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #0a0a0a;
+
+  /* Charts and Radii */
   --chart-1: #8b5cf6;
   --chart-2: #3b82f6;
   --chart-3: #14b8a6;
   --chart-4: #f59e0b;
   --chart-5: #ef4444;
   --radius: 0.75rem;
+
+  /* Sidebar */
   --sidebar: #fafafa;
   --sidebar-foreground: #0a0a0a;
   --sidebar-primary: #0a0a0a;
@@ -44,40 +50,46 @@
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #1a1a1a;
-  --card-foreground: #ffffff;
-  --popover: #1a1a1a;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ffffff;
-  --muted: #1a1a1a;
-  --muted-foreground: #a1a1aa;
-  --accent: #1a1a1a;
-  --accent-foreground: #ffffff;
-  --destructive: #7f1d1d;
-  --destructive-foreground: #ffffff;
-  --border: #2a2a2a;
-  --input: #1a1a1a;
-  --ring: #d4d4d8;
+  /* ===== Dark Theme Variables ===== */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: #a78bfa;
-  --chart-2: #60a5fa;
-  --chart-3: #2dd4bf;
-  --chart-4: #fbbf24;
-  --chart-5: #f87171;
-  --sidebar: #1a1a1a;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #a78bfa;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1a1a1a;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #d4d4d8;
+
+  /* Charts and Radii */
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --radius: 0.625rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
 }
 
 @theme inline {
@@ -102,6 +114,8 @@
   --color-input-background: var(--input-background);
   --color-switch-background: var(--switch-background);
   --color-ring: var(--ring);
+
+  /* Charts & Radius */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -111,6 +125,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Sidebar */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -128,12 +144,11 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Lexend', 'Inter', sans-serif;
   }
 }
 
-/**
- * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
- */
+/* Base Typography */
 @layer base {
   :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
     h1 {
@@ -160,28 +175,22 @@
       line-height: 1.5;
     }
 
-    p {
-      font-size: var(--text-base);
-      font-weight: var(--font-weight-normal);
-      line-height: 1.5;
-    }
-
-    label {
-      font-size: var(--text-base);
-      font-weight: var(--font-weight-medium);
-      line-height: 1.5;
-    }
-
-    button {
-      font-size: var(--text-base);
-      font-weight: var(--font-weight-medium);
-      line-height: 1.5;
-    }
-
+    p,
+    label,
+    button,
     input {
       font-size: var(--text-base);
-      font-weight: var(--font-weight-normal);
       line-height: 1.5;
+    }
+
+    p,
+    input {
+      font-weight: var(--font-weight-normal);
+    }
+
+    label,
+    button {
+      font-weight: var(--font-weight-medium);
     }
   }
 }
@@ -190,7 +199,7 @@ html {
   font-size: var(--font-size);
 }
 
-/* Shimmer animation for Get Started button */
+/* ===== Animations ===== */
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -200,7 +209,6 @@ html {
   }
 }
 
-/* Ripple animation for Analyze Reviews button */
 @keyframes ripple {
   0% {
     transform: translate(-50%, -50%) scale(0);
@@ -212,9 +220,9 @@ html {
   }
 }
 
-/* Pulsating dots animation */
 @keyframes pulse-dot {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
   }
   50% {

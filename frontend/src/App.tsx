@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { HomePage } from "@/components/pages/HomePage";
+import { HomePage } from "@/components/Pages/HomePage";
 import { SiteHeader } from "@/components/utils/SiteHeader";
-import { DashboardPage } from "@/components/pages/DashboardPage";
-import { AuthPage } from "@/components/pages/AuthPage";
-import { ProfilePage } from "@/components/pages/ProfilePage";
-import { ScrapingActivityPage } from "@/components/pages/ScrapingActivityPage";
-import { HistoryPage } from "@/components/pages/HistoryPage";
+import { DashboardPage } from "@/components/Pages/DashboardPage";
+import { AuthPage } from "@/components/Pages/AuthPage";
+import { ProfilePage } from "@/components/Pages/ProfilePage";
+import { ScrapingActivityPage } from "@/components/Pages/ScrapingActivityPage";
+import { HistoryPage } from "@/components/Pages/HistoryPage";
 import { ProtectedRoute } from "@/components/utils/ProtectedRoute";
-import { clearAuth, isAuthenticated, getUser } from "@/lib/auth";
+import { clearAuth, isAuthenticated } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { useToast } from "@/hooks/useToast";
 import { Footer } from "@/components/utils/Footer";
@@ -25,6 +25,12 @@ export default function App() {
     window.addEventListener("revu:auth-changed", onAuth);
     return () => window.removeEventListener("revu:auth-changed", onAuth);
   }, []);
+
+  // Sync document root class with theme state so Tailwind dark mode works
+  useEffect(() => {
+    if (isDark) document.documentElement.classList.add("dark");
+    else document.documentElement.classList.remove("dark");
+  }, [isDark]);
 
   const handleAnalyze = (_url: string) => {
     if (!isAuthenticated()) {
@@ -110,7 +116,7 @@ export default function App() {
           }
         />
 
-        {/* New pages */}
+        {/* New Pages */}
         <Route
           path="/scraping-activity"
           element={
@@ -161,7 +167,7 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {/* Hide footer on auth pages (login/signup) */}
+      {/* Hide footer on auth Pages (login/signup) */}
       {!location.pathname.startsWith("/auth") && <Footer isDark={isDark} />}
     </div>
   );

@@ -26,7 +26,7 @@ export function Footer({ isDark: isDarkProp }: FooterProps) {
       }}
     >
       <div className="w-full">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+  <div className="w-full max-w-none px-10 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 text-sm" style={{ color: isDark ? "#e5e7eb" : "#4b5563" }}>
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full">
               <Rocket className="w-5 h-5" aria-hidden />

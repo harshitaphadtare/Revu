@@ -2,14 +2,6 @@ import { motion } from "motion/react";
 import { NavLink } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { getUser } from "@/lib/auth";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
 
 type SiteHeaderProps = {
   isDark: boolean;
@@ -41,7 +33,7 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
         boxShadow: isDark ? "0 1px 0 rgba(0,0,0,0.6) inset" : undefined,
       }}
     >
-      <div className="container mx-auto px-6 py-4 grid grid-cols-3 items-center">
+  <div className="max-w-full px-10 py-4 grid grid-cols-3 items-center">
         {/* Left: Logo */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
