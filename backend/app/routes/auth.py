@@ -1,14 +1,29 @@
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from datetime import datetime, timezone
-import uuid
 
 from ..db.mongodb import get_db
-from ..utils.security import hash_password, verify_password, create_access_token, decode_token
-from ..schemas.user import UserCreate, UserLogin, UserPublic, TokenResponse
+from ..utils.security import (
+	create_access_token,
+	decode_token,
+	hash_password,
+	verify_password,
+)
+from ..schemas.user import (
+	PasswordChangeRequest,
+	TokenResponse,
+	UserCreate,
+	UserLogin,
+	UserPublic,
+	UserUpdate,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/signin")
+account_router = APIRouter(prefix="/api", tags=["account"])
 
 
 def _doc_to_public(doc) -> UserPublic:
@@ -17,6 +32,7 @@ def _doc_to_public(doc) -> UserPublic:
 		email=doc["email"],
 		name=doc.get("name"),
 		is_active=bool(doc.get("is_active", True)),
+		email_verified=doc.get("email_verified", True),
 		created_at=doc.get("created_at"),
 		updated_at=doc.get("updated_at"),
 	)
@@ -78,4 +94,62 @@ async def signin(body: UserLogin):
 @router.get("/me", response_model=UserPublic)
 async def me(current_user: UserPublic = Depends(get_current_user)):
 	return current_user
+
+
+@account_router.patch("/me", response_model=UserPublic)
+async def update_me(
+	body: UserUpdate,
+	current_user: UserPublic = Depends(get_current_user),
+):
+	db = await get_db()
+	users = db.users
+	user_doc = await users.find_one({"_id": current_user.id})
+	if not user_doc:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+	updates: dict[str, Any] = {}
+	now = datetime.now(timezone.utc)
+
+	if body.name is not None and body.name != user_doc.get("name"):
+		updates["name"] = body.name
+
+	if body.email is not None and body.email != user_doc.get("email"):
+		existing = await users.find_one({"email": body.email, "_id": {"$ne": current_user.id}})
+		if existing:
+			raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+		updates["email"] = body.email
+		updates["email_verified"] = False
+
+	if not updates:
+		return _doc_to_public(user_doc)
+
+	updates["updated_at"] = now
+	await users.update_one({"_id": current_user.id}, {"$set": updates})
+	updated_doc = await users.find_one({"_id": current_user.id})
+	return _doc_to_public(updated_doc)
+
+
+@account_router.post("/auth/change-password")
+async def change_password(
+	body: PasswordChangeRequest,
+	current_user: UserPublic = Depends(get_current_user),
+):
+	db = await get_db()
+	users = db.users
+	user_doc = await users.find_one({"_id": current_user.id})
+	if not user_doc:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+	if not verify_password(body.current_password, user_doc.get("password_hash", "")):
+		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+	if verify_password(body.new_password, user_doc.get("password_hash", "")):
+		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be different from current password")
+
+	hashed = hash_password(body.new_password)
+	now = datetime.now(timezone.utc)
+	await users.update_one(
+		{"_id": current_user.id},
+		{"$set": {"password_hash": hashed, "updated_at": now}},
+	)
+	return {"detail": "Password updated successfully"}
 

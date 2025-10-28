@@ -1,9 +1,10 @@
-import { getToken, saveAuth, type PublicUser } from "./auth";
+import { getToken, saveAuth, saveUser, type PublicUser } from "./auth";
 
 const rawBase = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
 const baseURL: string = String(rawBase).replace(/\/$/, "");
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+export type ApiError = Error & { status?: number; payload?: unknown };
 
 async function request<T>(path: string, options: {
   method?: HttpMethod;
@@ -24,7 +25,10 @@ async function request<T>(path: string, options: {
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const msg = data?.detail || data?.message || `Request failed (${res.status})`;
-    throw new Error(msg);
+    const err = new Error(msg) as ApiError;
+    err.status = res.status;
+    err.payload = data;
+    throw err;
   }
   return data as T;
 }
@@ -49,6 +53,16 @@ export async function apiSignin(payload: { email: string; password: string; }) {
 
 export async function apiMe() {
   return request<PublicUser>("/auth/me", { auth: true });
+}
+
+export async function apiUpdateProfile(payload: { name?: string | null; email?: string; }) {
+  const user = await request<PublicUser>("/api/me", { method: "PATCH", body: payload, auth: true });
+  saveUser(user);
+  return user;
+}
+
+export async function apiChangePassword(payload: { current_password: string; new_password: string; }) {
+  return request<{ detail: string }>("/api/auth/change-password", { method: "POST", body: payload, auth: true });
 }
 
 export { baseURL };

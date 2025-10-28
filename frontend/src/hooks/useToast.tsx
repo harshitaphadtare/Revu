@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -82,19 +83,31 @@ function BaseToastDark({ t, message, variant }: { t: string | number; message: s
 }
 
 export function useToast() {
-  function show(message: string, variant: Variant = "info") {
+  const show = useCallback((message: string, variant: Variant = "info") => {
     const duration = 3000;
-    // Re-evaluate theme at the time of showing the toast so toasts follow
-    // the current UI theme (useful when the user toggles theme at runtime).
-    const prefersDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    toast.custom((t) => (prefersDark ? <BaseToastDark t={t} message={message} variant={variant} /> : <BaseToast t={t} message={message} variant={variant} />), {
-      duration,
-    });
-  }
+    const prefersDark =
+      typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+    toast.custom(
+      (t) =>
+        prefersDark ? (
+          <BaseToastDark t={t} message={message} variant={variant} />
+        ) : (
+          <BaseToast t={t} message={message} variant={variant} />
+        ),
+      { duration }
+    );
+  }, []);
 
-  return {
-    info: (msg: string) => show(msg, "info"),
-    success: (msg: string) => show(msg, "success"),
-    error: (msg: string) => show(msg, "error"),
-  };
+  const info = useCallback((msg: string) => show(msg, "info"), [show]);
+  const success = useCallback((msg: string) => show(msg, "success"), [show]);
+  const error = useCallback((msg: string) => show(msg, "error"), [show]);
+
+  return useMemo(
+    () => ({
+      info,
+      success,
+      error,
+    }),
+    [info, success, error]
+  );
 }
