@@ -200,8 +200,38 @@ npm run test
 ## Development tips & debugging
 
 - If Vite or CI fails with missing file errors on Linux, check case-sensitivity of filenames and commits (Windows is case-insensitive).
-- Add temporary debug steps in `.github/workflows/ci.yml` to `ls` suspect directories if CI can't find a file.
 - Increase `pause_seconds` in `scraper.py` if you observe frequent captcha/blocking.
+- Use the provided code formatters and linters:
+  - Python: `black backend/` and `ruff check backend/` (config in `pyproject.toml`)
+  - Frontend: `npm run lint` and `npx prettier --write frontend/src` (config in `.eslintrc.json` and `.prettierrc`)
+
+## Code quality & formatting
+
+This repository includes formatter and linter configurations to maintain consistent code style:
+
+- **Python** (backend):
+  - Black for formatting (line-length 120)
+  - Ruff for linting
+  - Isort for import sorting
+  - Config: `pyproject.toml`
+  
+- **TypeScript/React** (frontend):
+  - ESLint for linting
+  - Prettier for formatting
+  - Config: `.eslintrc.json`, `.prettierrc`
+
+Run formatters before committing:
+
+```bash
+# Backend
+black backend/
+ruff check backend/ --fix
+
+# Frontend
+cd frontend
+npm run lint --fix
+npx prettier --write src/
+```
 
 ## Contributing
 

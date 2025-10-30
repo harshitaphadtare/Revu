@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+
+# Build outputs
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Cache
+.pytest_cache/
+.cache/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Generated
+package-lock.json
+*.lock
