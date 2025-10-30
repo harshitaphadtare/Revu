@@ -1,18 +1,18 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { HomePage } from "./components/Pages/HomePage";
-import { SiteHeader } from "./components/utils/SiteHeader";
-import { DashboardPage } from "./components/Pages/DashboardPage";
-import { AuthPage } from "./components/Pages/AuthPage";
-import { ProfilePage } from "./components/Pages/ProfilePage";
-import { ScrapingActivityPage } from "./components/Pages/ScrapingActivityPage";
-import { HistoryPage } from "./components/Pages/HistoryPage";
-import { ProtectedRoute } from "./components/utils/ProtectedRoute";
-import { clearAuth, isAuthenticated } from "./lib/auth";
-import { apiStartScrape, apiLockStatus } from "./lib/api";
-import { Toaster } from "./components/ui/sonner";
-import { useToast } from "./hooks/useToast";
-import { Footer } from "./components/utils/Footer";
+import { HomePage } from "./components/Pages/HomePage.tsx";
+import { SiteHeader } from "./components/utils/SiteHeader.tsx";
+import { DashboardPage } from "./components/Pages/DashboardPage.tsx";
+import { AuthPage } from "./components/Pages/AuthPage.tsx";
+import { ProfilePage } from "./components/Pages/ProfilePage.tsx";
+import { ScrapingActivityPage } from "./components/Pages/ScrapingActivityPage.tsx";
+import { HistoryPage } from "./components/Pages/HistoryPage.tsx";
+import { ProtectedRoute } from "./components/utils/ProtectedRoute.tsx";
+import { clearAuth, isAuthenticated } from "./lib/auth.ts";
+import { apiStartScrape, apiLockStatus } from "./lib/api.ts";
+import { Toaster } from "./components/ui/sonner.tsx";
+import { useToast } from "./hooks/useToast.tsx";
+import { Footer } from "./components/utils/Footer.tsx";
 
 export default function App() {
   const [isDark, setIsDark] = useState(false);
