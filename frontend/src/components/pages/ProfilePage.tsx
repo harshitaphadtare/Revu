@@ -57,7 +57,7 @@ export function ProfilePage({ onBack, onLogout, isDark }: ProfilePageProps) {
                 </Button>
                 <Button
                   variant="ghost"
-                  className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl"
+                  className="text-gray-700 border-2 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-xl"
                 >
                   <X className="w-4 h-4 mr-2" />
                   Remove Photo

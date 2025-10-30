@@ -18,6 +18,7 @@ services:
       - MONGO_DB=${MONGO_DB:-revu}
       - JWT_SECRET=${JWT_SECRET:-change-me}
       - JWT_EXPIRES_MIN=${JWT_EXPIRES_MIN:-60}
+      - SCRAPER_MAX_REVIEWS=${SCRAPER_MAX_REVIEWS:-4000}
       - SUMMARY_BACKEND=${SUMMARY_BACKEND:-gemini}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     ports:
@@ -33,7 +34,8 @@ services:
     container_name: revu-worker
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SCRAPER_MAX_REVIEWS=4000
+  # SERPAPI integration removed
+      - SCRAPER_MAX_REVIEWS=${SCRAPER_MAX_REVIEWS:-4000}
     depends_on:
       - redis
     command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "--pool=solo"]

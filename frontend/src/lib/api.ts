@@ -52,3 +52,39 @@ export async function apiMe() {
 }
 
 export { baseURL };
+
+// ---- Scraping API ----
+
+export type StartScrapeResponse = { job_id: string };
+export type ScrapeStatusResponse = {
+  job_id: string;
+  state: "PENDING" | "PROGRESS" | "SUCCESS" | "FAILURE" | "REVOKED" | string;
+  progress: number;
+  result?: any;
+  count?: number | null;
+  product?: any;
+  error?: string | null;
+};
+export type CancelResponse = { job_id: string; cancel_requested: boolean };
+export type LockStatus = { locked: boolean; owner_job_id?: string | null; ttl?: number | null };
+
+export async function apiStartScrape(payload: { url: string }) {
+  return request<StartScrapeResponse>(`/start-scrape`, { method: "POST", body: payload, auth: true });
+}
+
+export async function apiScrapeStatus(jobId: string) {
+  return request<ScrapeStatusResponse>(`/scrape-status/${encodeURIComponent(jobId)}`);
+}
+
+export async function apiCancelScrape(jobId: string) {
+  return request<CancelResponse>(`/cancel-scrape/${encodeURIComponent(jobId)}`, { method: "POST" });
+}
+
+export async function apiLockStatus() {
+  return request<LockStatus>(`/scrape-lock-status`);
+}
+
+// ---- Analyze API ----
+export async function apiAnalyze(body: any) {
+  return request<any>(`/analyze/`, { method: "POST", body });
+}

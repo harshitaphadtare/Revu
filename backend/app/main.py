@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import analyze, fetch_review_job, auth
 from .db.mongodb import init_db
+import logging
 
 app = FastAPI(
     title="Revu API",
@@ -28,7 +29,13 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
-    # Ensure DB indexes are created
-    await init_db()
+    # Ensure DB indexes are created, but don't block API if DB is unreachable.
+    try:
+        await init_db()
+    except Exception as exc:
+        # Log and continue so scraping endpoints (Redis/Celery) still work.
+        logging.getLogger("uvicorn.error").warning(
+            "MongoDB init failed on startup: %s. Continuing without DB indexes.", exc
+        )
 
     
