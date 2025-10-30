@@ -80,7 +80,6 @@ function Card({
   const dividerColor = theme === "dark" ? "rgba(148,163,184,0.2)" : "rgba(229,231,235,1)";
   const trackColor = theme === "dark" ? "rgba(71,85,105,0.55)" : "#E5E7EB";
 
-  // Display determinate bar only when progress is between 0-100
   const hasDeterminate = typeof progress === "number" && progress >= 0 && progress <= 100;
 
   return (
@@ -170,72 +169,82 @@ export function useToast() {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
   }, []);
 
-  const info = useCallback((msg: string) => show(msg, "info"), [show]);
-  const success = useCallback((msg: string) => show(msg, "success"), [show]);
-  const error = useCallback((msg: string) => show(msg, "error"), [show]);
+  const show = useCallback(
+    (message: string, variant: Variant = "info", opts: ToastOptions = {}) => {
+      const duration =
+        typeof opts.progress === "number"
+          ? 60000
+          : opts.duration ??
+            (variant === "error" ? 5000 : variant === "warning" ? 4500 : 3200);
+      const theme = resolveTheme();
+      toast.custom(
+        (t) => (
+          <Card
+            t={t}
+            message={message}
+            description={opts.description}
+            variant={variant}
+            progress={opts.progress}
+            theme={theme}
+          />
+        ),
+        { duration }
+      );
+    },
+    [resolveTheme]
+  );
+
+  const withProgress = useCallback(
+    (message: string, variant: Variant = "info", initial = 0) => {
+      const theme = resolveTheme();
+      const id = toast.custom(
+        (t) => (
+          <Card
+            t={t}
+            message={message}
+            variant={variant}
+            progress={clampProgress(initial)}
+            theme={theme}
+          />
+        ),
+        { duration: 60000 }
+      );
+
+      return {
+        id,
+        update: (progress: number, msg?: string, opts: Omit<ToastOptions, "progress"> = {}) => {
+          const nextTheme = resolveTheme();
+          toast.custom(
+            (t) => (
+              <Card
+                t={t}
+                message={msg ?? message}
+                description={opts.description}
+                variant={variant}
+                progress={clampProgress(progress)}
+                theme={nextTheme}
+              />
+            ),
+            { id, duration: opts.duration ?? 60000 }
+          );
+        },
+        success: (msg?: string, opts?: ToastOptions) => show(msg ?? "Done", "success", opts),
+        error: (msg?: string, opts?: ToastOptions) => show(msg ?? "Failed", "error", opts),
+        warning: (msg?: string, opts?: ToastOptions) => show(msg ?? "Heads up", "warning", opts),
+        dismiss: () => toast.dismiss(id),
+      };
+    },
+    [resolveTheme, show]
+  );
 
   return useMemo(
     () => ({
-      info,
-      success,
-      error,
+      info: (msg: string, opts?: ToastOptions) => show(msg, "info", opts),
+      success: (msg: string, opts?: ToastOptions) => show(msg, "success", opts),
+      error: (msg: string, opts?: ToastOptions) => show(msg, "error", opts),
+      warning: (msg: string, opts?: ToastOptions) => show(msg, "warning", opts),
+      progress: withProgress,
     }),
-    [info, success, error]
+    [show, withProgress]
   );
-=========
-  function show(message: string, variant: Variant = "info", opts: ToastOptions = {}) {
-    const duration = typeof opts.progress === "number" ? 60000 : opts.duration ?? (variant === "error" ? 5000 : 3200);
-    const prefersDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    toast.custom(
-      (t) => (
-        <Card
-          t={t}
-          message={message}
-          description={opts.description}
-          variant={variant}
-          progress={opts.progress}
-          theme={prefersDark ? "dark" : "light"}
-        />
-      ),
-      { duration }
-    );
-  }
-
-  function withProgress(message: string, variant: Variant = "info", initial = 0) {
-    const prefersDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    const id = toast.custom(
-      (t) => (
-        <Card t={t} message={message} variant={variant} progress={initial} theme={prefersDark ? "dark" : "light"} />
-      ),
-      { duration: 60000 }
-    );
-    return {
-      id,
-      update: (p: number, msg?: string) =>
-        toast.custom(
-          (t) => (
-            <Card
-              t={t}
-              message={msg ?? message}
-              variant={variant}
-              progress={Math.max(0, Math.min(100, p))}
-              theme={prefersDark ? "dark" : "light"}
-            />
-          ),
-          { id, duration: 60000 }
-        ),
-      success: (msg?: string) => show(msg ?? "Done", "success"),
-      error: (msg?: string) => show(msg ?? "Failed", "error"),
-      dismiss: () => toast.dismiss(id),
-    };
-  }
-
-  return {
-    info: (msg: string, opts?: ToastOptions) => show(msg, "info", opts),
-    success: (msg: string, opts?: ToastOptions) => show(msg, "success", opts),
-    error: (msg: string, opts?: ToastOptions) => show(msg, "error", opts),
-    warning: (msg: string, opts?: ToastOptions) => show(msg, "warning", opts),
-    progress: withProgress,
-  };
->>>>>>>>> Temporary merge branch 2
 }
