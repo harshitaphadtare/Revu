@@ -5,10 +5,8 @@ from datetime import date, datetime
 from celery import Celery, states
 from celery.utils.log import get_task_logger
 from app.services.scraper import scrape_reviews
-# SerpApi integration removed; no external SerpApi-specific exceptions
 import redis
 
-# Broker/Backend URLs (can be overridden by env vars)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 RESULT_URL = os.getenv("RESULT_URL", REDIS_URL)
 
@@ -177,6 +175,9 @@ def run_scraper_task(self, url: str) -> dict:
                 cancel_cb=_cancel_check,
             )
             serialized = _serialize_reviews(reviews)
+            # Treat zero reviews as a failure to surface issues (blocked, wrong URL, etc.)
+            if len(serialized) == 0:
+                raise ValueError("No reviews scraped for the provided URL.")
             result_payload = {"count": len(serialized), "reviews": serialized, "product": product_meta, "error": None}
             # Persist final result and meta (log before/after for debugging)
             try:

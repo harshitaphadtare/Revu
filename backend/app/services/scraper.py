@@ -82,7 +82,14 @@ def _scrape_amazon_reviews_raw(
             return prod_url
 
         try:
-            headers = {"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "en-US,en;q=0.9"}
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            }
             r = sess.get(prod_url, headers=headers, timeout=15)
             r.raise_for_status()
             s = BeautifulSoup(r.text, "html.parser")
@@ -114,6 +121,23 @@ def _scrape_amazon_reviews_raw(
                         parsed = urlparse(prod_url)
                         base = f"{parsed.scheme}://{parsed.netloc}"
                         return base + href
+            # Last resort: build a canonical product-reviews URL from ASIN if present
+            asin = _extract_asin_from_url(prod_url)
+            if asin:
+                parsed = urlparse(prod_url)
+                # Try locale-aware path first, then fallback
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                candidates = [
+                    f"{base}/product-reviews/{asin}",
+                    f"{base}/-/en/product-reviews/{asin}",
+                ]
+                for c in candidates:
+                    try:
+                        resp = sess.get(c, headers=headers, timeout=10)
+                        if resp.status_code == 200:
+                            return c
+                    except Exception:
+                        pass
         except Exception:
             return None
         return None
@@ -159,10 +183,12 @@ def _scrape_amazon_reviews_raw(
             "User-Agent": random.choice(USER_AGENTS),
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
+            # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
+            "Accept-Encoding": "gzip, deflate",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Referer": url,
         }
         
         url_page = reviews_url(page)
@@ -537,7 +563,10 @@ def scrape_amazon_reviews(
         ))
 
     if len(reviews_list) == 0:
-        print(f"No review bodies available for URL {url}; returning product metadata with empty reviews.")
+        # Signal failure upstream so the worker marks the task as FAILURE
+        raise ValueError(
+            "No reviews found. Possible causes: invalid/unsupported URL, reviews hidden behind CAPTCHA, or locale-specific page layout."
+        )
     else:
         print(f"Successfully fetched {len(reviews_list)} Amazon reviews")
     
