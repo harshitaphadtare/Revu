@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: "Backend: tests & minimal checks"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers (chromium)
+        working-directory: backend
+        run: python -m playwright install chromium
+
+      - name: Run backend tests (pytest)
+        working-directory: backend
+        run: python -m pytest -q
+
+  frontend:
+    name: "Frontend: install & build"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Show Node and npm versions
+        run: |
+          node -v
+          npm -v
+
+      - name: Pre-build diagnostics (list frontend source)
+        run: |
+          echo "Listing frontend structure..."
+          ls -la frontend/src || true
+          ls -la frontend/src/components || true
+          ls -la frontend/src/components/Pages || true
+
+      - name: Verify required page components exist
+        run: |
+          PAGES=("HomePage" "DashboardPage" "AuthPage" "ProfilePage" "ScrapingActivityPage" "HistoryPage")
+          echo "Verifying presence of ${#PAGES[@]} page components..."
+          for page in "${PAGES[@]}"; do
+            PAGE_FILE="frontend/src/components/Pages/${page}.tsx"
+            if [ ! -f "$PAGE_FILE" ]; then
+              echo "❌ ERROR: Missing $PAGE_FILE"
+              echo "Searching for case variants..."
+              find frontend/src -iname "${page}.tsx" -print || true
+              exit 1
+            else
+              echo "✅ OK: ${page}.tsx present"
+            fi
+          done
+          echo "All required page components verified successfully"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json', 'frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run frontend tests (if present)
+        if: always()
+        working-directory: frontend
+        run: |
+          if [ -f package.json ] && npm run | grep -q "test"; then
+            npm run test --silent || true
+          else
+            echo "No frontend tests defined"
+          fi

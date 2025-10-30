@@ -1,8 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, HttpUrl
 import os, json
+from datetime import datetime, timedelta, timezone
 import redis
 from celery.result import AsyncResult
+from app.routes.auth import get_current_user
+from app.schemas.user import UserPublic
 
 router = APIRouter(prefix="", tags=["Fetch Review Job"])
 
@@ -18,7 +21,28 @@ class StartScrapeRequest(BaseModel):
     url: HttpUrl
 
 @router.post("/start-scrape")
-def start_scrape(payload: StartScrapeRequest):
+def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends(get_current_user)):
+    # Per-user daily rate limiting (5/day)
+    try:
+        user_id = current_user.id
+        now = datetime.now(timezone.utc)
+        day_key = now.strftime("%Y%m%d")
+        rate_key = f"revu:rate:{user_id}:{day_key}"
+        # Increment atomically and set TTL to end-of-day on first use
+        new_count = redis_client.incr(rate_key)
+        if new_count == 1:
+            # seconds until midnight UTC
+            tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            ttl = int((tomorrow - now).total_seconds())
+            redis_client.expire(rate_key, ttl)
+        if new_count > 5:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Daily limit reached (5 scrapes). Try again tomorrow.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # If Redis is unavailable, do not block; proceed without rate limiting
+        pass
+
     locked = redis_client.set(LOCK_KEY, "1", nx=True, ex=LOCK_TTL)
     if not locked:
         raise HTTPException(status_code=409, detail="A scraping job is already in progress. Please wait until it finishes.")
@@ -177,7 +201,24 @@ def cancel_scrape(job_id: str):
     try:
         from app.worker import celery_app
         res = AsyncResult(job_id, app=celery_app)
+        # With Celery solo pool, terminate has no effect; keep cooperative approach
         res.revoke(terminate=False)
+    except Exception:
+        pass
+
+    # Optimistically mark task as REVOKED in meta so the UI reflects cancellation immediately
+    try:
+        meta_key = TASK_META_KEY.format(job_id=job_id)
+        # Preserve existing progress if available
+        prev_raw = redis_client.get(meta_key)
+        prog = 0
+        if prev_raw:
+            try:
+                prev = json.loads(prev_raw)
+                prog = int(prev.get("progress", 0))
+            except Exception:
+                prog = 0
+        redis_client.set(meta_key, json.dumps({"state": "REVOKED", "progress": prog, "error": "cancelled by user"}), ex=60 * 60 * 24)
     except Exception:
         pass
 

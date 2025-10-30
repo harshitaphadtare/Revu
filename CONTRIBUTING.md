@@ -1,89 +1,134 @@
 # Contributing to Revu
 
-Thanks for your interest in contributing! This guide helps you set up your environment, follow our conventions, and submit a great PR.
+Thank you for your interest in contributing to Revu — we appreciate your time and help.
+
+This document is the single, authoritative contribution guide. It standardizes environment requirements, development setup, branch naming, testing, and PR expectations.
 
 ## Table of contents
 
-- Getting started
-- Development workflow
-- Branching & commits
-- Testing & verification
-- Code style & linting
-- Submitting a pull request
+- Reporting bugs & feature requests
+- Prerequisites
+- Quick development setup (local and Docker)
+- Running tests & linters
+- Branching, commits & PR workflow
+- PR checklist
+- Communication & support
+- Code of Conduct
 
-## Getting started
+---
 
-1. Fork the repo and clone your fork
+## Reporting bugs & feature requests
 
-2. Prereqs
+- File issues on GitHub. For bugs include: steps to reproduce, expected vs actual behavior, environment (OS, Python/Node/npm versions), and relevant logs or error messages.
+- For feature requests, open an issue describing the problem, proposed solution, and any UX/API sketches where helpful.
 
-- Node 18+ and npm
-- Python 3.10+
-- Docker & docker-compose (recommended for end-to-end)
+## Prerequisites
 
-3. Setup
+- Node.js 18+ and npm (frontend)
+- Python 3.11+ (backend) — this repo's Dockerfile and CI use Python 3.11; please target 3.11+ when running locally
+- Docker & docker-compose (recommended for full end-to-end development)
 
-- Frontend
-  ```
-  cd frontend
-  npm install
-  npm run dev
-  ```
-- Backend (venv)
-  ```
-  cd backend
-  python -m venv ..\.venv
-  ..\.venv\Scripts\activate
-  pip install -r requirements.txt
-  ```
-- Redis & Mongo
-  - Redis (Docker): `docker run -d -p 6379:6379 --name revu-redis redis:7-alpine`
-  - Mongo: Atlas connection string in env `MONGO_URI`
+Note: we standardized on Python 3.11+ to match the project container/CI configuration.
 
-4. Environment variables
+## Quick development setup
 
-- Copy `.env.example` to `.env` at repo root for Docker Compose
-- Copy `backend/.env.example` to `backend/.env` if you prefer running backend manually
+Two recommended approaches: Docker (preferred for parity) or native local dev.
 
-## Development workflow
+### 1) Docker (recommended)
 
-- Prefer running everything via `docker-compose up --build` for an end-to-end flow
-- Alternatively, run backend locally (Uvicorn) and worker via Celery with Redis, and run the frontend via Vite dev server
-- Use the FastAPI docs at `http://localhost:8000/docs` to exercise endpoints
-- Import `backend/postman_collections/revu-auth.postman_collection.json` to Postman for auth tests
+From the repository root:
 
-## Branching & commits
+```cmd
+docker-compose up --build
+```
 
-- Branch naming: `feat/<short-description>`, `fix/<issue-or-bug>`, `docs/<area>`, `chore/<what>`
-- Commit style: Prefer Conventional Commits (e.g., `feat(auth): add signup endpoint`)
-- Keep commits small, clear, and logically scoped
+This starts Redis and the backend (FastAPI + Celery worker). The frontend can be run separately with `npm run dev` or served from the built assets.
 
-## Testing & verification
+### 2) Native local development
 
-- Backend tests (Windows):
-  ```
-  # from repo root
-  run_tests_py.bat
-  # or PowerShell
-  ./run_tests_pwsh.ps1
-  ```
-- Frontend build:
-  ```
-  cd frontend
-  npm run build
-  ```
-- If you add new backend routes/services, include minimal tests under `backend/tests/`
+Backend (Windows example):
 
-## Code style & linting
+```cmd
+cd backend
+python -m venv ..\.venv
+..\.venv\Scripts\activate
+pip install -r requirements.txt
+# Run the API
+uvicorn app.main:app --reload
+```
 
-- Python: follow PEP8; if you use formatters (black, ruff), run them before pushing
-- TypeScript/React: keep code modular and typed; prefer functional components
+Frontend:
 
-## Submitting a pull request
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-1. Ensure your branch is up to date with `main`
-2. Fill in a clear PR description (what/why/how), link issues if applicable
-3. Add steps to manually verify the change (or tests)
-4. Ensure docs are updated (README or inline comments)
+### Environment variables
 
-Thanks again for contributing — we’re excited to work with you!
+- Copy `.env.example` (repo root) to `.env` when running via Docker Compose.
+- If running services manually, set the backend env vars (see `backend/.env.example`).
+
+### Databases
+
+- Redis is required for the worker/broker. Using Docker Compose is the easiest way to provision it.
+- MongoDB: use an Atlas URI or a local Mongo instance; set `MONGO_URI` accordingly.
+
+## Running tests & linters
+
+Backend tests (pytest):
+
+```cmd
+cd backend
+..\.venv\Scripts\activate
+python -m pytest -q
+```
+
+Frontend build/tests:
+
+```bash
+cd frontend
+npm ci
+npm run build    # verify build succeeds
+```
+
+Formatting & linting
+
+- Python: use `black` and `ruff` if you run linters locally.
+- TypeScript: run your project's linters/formatters as configured (see `package.json`).
+
+## Branching, commits & PR workflow
+
+- Branch naming: `feat/<short-description>`, `fix/<short-description>`, `docs/<area>`, `chore/<what>`.
+- Commit messages: use clear, imperative messages. Prefer Conventional Commits style when practical (e.g. `feat(auth): add signup endpoint`).
+- Workflow:
+  1. Fork the repo and create a feature branch from `main`.
+
+2.  Make small, focused commits; run tests locally.
+3.  Push to your fork and open a PR against `main` with a descriptive title and summary.
+
+## PR checklist (include in PR description)
+
+- [ ] Tests pass locally and CI (if applicable)
+- [ ] New behavior covered by tests where appropriate
+- [ ] Documentation updated (README, inline comments)
+- [ ] No sensitive data (secrets) included
+- [ ] Followed branch & commit naming conventions
+
+Maintainers will review, request changes if necessary, then merge when ready.
+
+## Communication & support
+
+- For design/large changes, open an issue first to gather feedback.
+- Use GitHub Issues or Discussions for questions. Link to relevant issues from PRs.
+
+## Code of Conduct
+
+By participating in this project you agree to abide by our Code of Conduct (`CODE_OF_CONDUCT.md`). Please be respectful and welcoming.
+
+---
+
+If you'd like, I can also add a small PR template to `.github/PULL_REQUEST_TEMPLATE.md` and a CONTRIBUTING checklist file — tell me if you want that and I'll create it.
+
+Thanks for contributing — we value your help and look forward to reviewing your changes!
