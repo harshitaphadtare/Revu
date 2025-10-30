@@ -1,9 +1,12 @@
 import os
 import re
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
-summarizer_model = None
-_gemini_model_cache: Optional[Tuple[str, str]] = None  # (api_version, model_name)
+# Optional: test injection point for a local summarizer model (used in unit tests)
+summarizer_model: Optional[Any] = None
+
+# Gemini model discovery cache: (api_version, model_name)
+_gemini_model_cache: Optional[Tuple[str, str]] = None
 
 def chunk_text(text, max_tokens=500):
     """
@@ -90,12 +93,12 @@ def _limit_sentences_and_words(text: str, *, max_sentences: int, max_words: int)
     # Join and then cap words
     joined = " ".join(sents).strip()
     words = joined.split()
-    if len(words) <= max_words:
-        return _normalize_sentences(joined, max_sentences=max_sentences)
-    trimmed = " ".join(words[:max_words]).rstrip(',;:')
-    if trimmed and trimmed[-1] not in ".!?":
-        trimmed += "."
-    return _normalize_sentences(trimmed, max_sentences=max_sentences)
+    if len(words) > max_words:
+        joined = " ".join(words[:max_words]).rstrip(',;:')
+        if joined and joined[-1] not in ".!?":
+            joined += "."
+    # Single normalization pass at the end (consolidates redundant calls)
+    return _normalize_sentences(joined, max_sentences=max_sentences)
 
 def _ensure_max_lines(text: str, max_lines: int = 4) -> str:
     if not text:

@@ -28,42 +28,48 @@ Revu/
 └── tests/                         # Small end-to-end and unit tests
 ```
 
-## Quick start (Docker — recommended)
+## Getting Started
 
-1. Copy environment template and set secrets:
+### Option 1: Docker (Recommended)
+
+The fastest way to get everything running with consistent parity across environments.
+
+1. **Copy environment template and set secrets:**
 
 ```bash
 cp .env.example .env
-# Edit .env: MONGO_URI, JWT_SECRET, REDIS_URL, SCRAPER_MAX_REVIEWS, GEMINI_API_KEY (optional)
+# Edit .env with your configuration (see Environment Variables table below)
 ```
 
-2. Build and start everything:
+2. **Build and start all services:**
 
 ```bash
 docker-compose up --build -d
 ```
 
-3. Verify services:
+3. **Verify services are running:**
 
 - Frontend: http://localhost:3000
-- Backend API (Swagger): http://localhost:8000/docs
+- Backend API (Swagger docs): http://localhost:8000/docs
 - Redis: localhost:6379
 
-Notes:
+**Note:** The backend Dockerfile installs Playwright and browser binaries by default to enable the scraper fallback for JS-heavy pages. This increases image size but provides robust scraping.
 
-- The backend Dockerfile installs Playwright and browser binaries by default to enable the scraper fallback for JS-heavy pages. This increases image size.
+### Option 2: Local Development (Native)
 
-## Local development (backend)
+If you prefer running services outside Docker:
+
+**Backend setup:**
 
 ```bash
 cd backend
 python -m venv ../.venv
-..\.venv\Scripts\activate   # Windows
+..\.venv\Scripts\activate   # Windows (use `source ../.venv/bin/activate` on Linux/Mac)
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Start a worker (separate terminal):
+**Start Celery worker** (separate terminal):
 
 ```bash
 cd backend
@@ -71,7 +77,7 @@ cd backend
 celery -A app.worker.celery_app worker -l info --pool=solo
 ```
 
-Frontend (local):
+**Frontend setup:**
 
 ```bash
 cd frontend
@@ -79,15 +85,27 @@ npm ci
 npm run dev
 ```
 
-## Environment variables
+**Prerequisites for local dev:**
+- Python 3.11+
+- Node.js 18+ and npm
+- Redis running (use Docker: `docker run -d -p 6379:6379 redis:7-alpine` or install locally)
+- MongoDB (Atlas URI or local instance)
 
-Important variables (see `.env.example`):
+### Environment Variables
 
-- MONGO_URI - MongoDB connection string
-- JWT_SECRET - JWT signing secret
-- REDIS_URL - Redis connection URL
-- SCRAPER_MAX_REVIEWS - Default max per scrape (capped at 300)
-- SUMMARY_BACKEND - `gemini` or `textrank`
+Configure these in `.env` (for Docker) or `backend/.env` (for local backend):
+
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `MONGO_URI` | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/revu` |
+| `MONGO_DB` | Database name | `revu` |
+| `JWT_SECRET` | Secret for JWT token signing | `change-me-to-secure-random-string` |
+| `JWT_EXPIRES_MIN` | JWT token expiration (minutes) | `60` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
+| `SCRAPER_MAX_REVIEWS` | Max reviews per scrape (hard capped at 300) | `300` |
+| `SUMMARY_BACKEND` | Summarizer engine: `gemini` or `textrank` | `gemini` |
+| `GEMINI_API_KEY` | Google Gemini API key (required if using `gemini` backend) | Your API key |
+| `GEMINI_MODEL` | Optional: specific Gemini model name | `gemini-1.5-flash` |
 
 ## API - endpoints & examples
 

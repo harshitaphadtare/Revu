@@ -154,12 +154,13 @@ def run_scraper_task(self, url: str) -> dict:
                 pass
 
         try:
-            # Respect environment variable SCRAPER_MAX_REVIEWS when provided (default 4000)
+            # Respect environment variable SCRAPER_MAX_REVIEWS when provided (default 300)
+            # Note: The scraper itself hard-caps to 300, so this keeps behavior consistent.
             max_reviews_env = os.getenv("SCRAPER_MAX_REVIEWS")
             try:
-                max_reviews = int(max_reviews_env) if max_reviews_env else 4000
+                max_reviews = int(max_reviews_env) if max_reviews_env else 300
             except Exception:
-                max_reviews = 4000
+                max_reviews = 300
 
             # Limit pages via env to avoid multi-hour runs; default to 50
             try:
