@@ -53,6 +53,35 @@ jobs:
         with:
           node-version: "18"
 
+      - name: Show Node and npm versions
+        run: |
+          node -v
+          npm -v
+
+      - name: Pre-build diagnostics (list frontend source)
+        run: |
+          echo "Listing src/" && ls -la frontend/src || true
+          echo "Listing src/components" && ls -la frontend/src/components || true
+          echo "Listing src/components/Pages" && ls -la frontend/src/components/Pages || true
+          echo "Case-insensitive search for HomePage.tsx" && find frontend/src -iname "homepage.tsx" -print || true
+          echo "Verify HomePage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/HomePage.tsx && echo "OK: HomePage.tsx present" || (echo "Missing: frontend/src/components/Pages/HomePage.tsx" && exit 1)
+          echo "Case-insensitive search for DashboardPage.tsx" && find frontend/src -iname "dashboardpage.tsx" -print || true
+          echo "Verify DashboardPage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/DashboardPage.tsx && echo "OK: DashboardPage.tsx present" || (echo "Missing: frontend/src/components/Pages/DashboardPage.tsx" && exit 1)
+          echo "Case-insensitive search for AuthPage.tsx" && find frontend/src -iname "authpage.tsx" -print || true
+          echo "Verify AuthPage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/AuthPage.tsx && echo "OK: AuthPage.tsx present" || (echo "Missing: frontend/src/components/Pages/AuthPage.tsx" && exit 1)
+          echo "Case-insensitive search for ProfilePage.tsx" && find frontend/src -iname "profilepage.tsx" -print || true
+          echo "Verify ProfilePage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/ProfilePage.tsx && echo "OK: ProfilePage.tsx present" || (echo "Missing: frontend/src/components/Pages/ProfilePage.tsx" && exit 1)
+          echo "Case-insensitive search for ScrapingActivityPage.tsx" && find frontend/src -iname "scrapingactivitypage.tsx" -print || true
+          echo "Verify ScrapingActivityPage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/ScrapingActivityPage.tsx && echo "OK: ScrapingActivityPage.tsx present" || (echo "Missing: frontend/src/components/Pages/ScrapingActivityPage.tsx" && exit 1)
+          echo "Case-insensitive search for HistoryPage.tsx" && find frontend/src -iname "historypage.tsx" -print || true
+          echo "Verify HistoryPage.tsx exists (case-sensitive)"
+          test -f frontend/src/components/Pages/HistoryPage.tsx && echo "OK: HistoryPage.tsx present" || (echo "Missing: frontend/src/components/Pages/HistoryPage.tsx" && exit 1)
+
       - name: Cache node modules
         uses: actions/cache@v4
         with:
