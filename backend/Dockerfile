@@ -37,7 +37,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m playwright install --with-deps || true
 
 # Copy backend source
-# Copy backend source
 COPY backend/ ./
 
 # Environment

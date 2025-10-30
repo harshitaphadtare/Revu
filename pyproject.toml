@@ -30,9 +30,7 @@ ensure_newline_before_comments = true
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q"
-testpaths = [
-    "backend/tests",
-]
+testpaths = ["backend/tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
@@ -49,17 +47,11 @@ select = [
     "C4", # flake8-comprehensions
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
-    "B008",  # do not perform function calls in argument defaults
-    "C901",  # too complex
+    "E501", # line too long (handled by black)
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
 ]
-exclude = [
-    ".git",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-]
+exclude = [".git", ".venv", "__pycache__", "build", "dist"]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]  # Unused imports in __init__ files are OK
+"__init__.py" = ["F401"] # Unused imports in __init__ files are OK

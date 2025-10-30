@@ -1,26 +1,32 @@
+## Description
 
-##  Description
 Fixes: #issue_number
 
-
 ## Changes Made
+
 <!-- Bullet-point summary of your changes -->
+
 - Added: [Description]
 - Fixed: [Description]
 - Updated: [Description]
 
 ## Testing
+
 <!-- How did you verify your changes? -->
-- [ ] Ran unit tests (`pnpm test`)
+
+- [ ] Ran unit tests (`npm test`)
 - [ ] Tested manually (describe below):
   - Test case 1: [Steps + Expected Result]
   - Test case 2: [Steps + Expected Result]
 
-##  Screenshots
+## Screenshots
+
 ### Before
+
 ### After
 
-##  Checklist
+## Checklist
+
 - [ ] My code follows the project's coding standards.
 - [ ] I have performed a self-review of my own code.
 - [ ] I have commented my code, particularly in hard-to-understand areas.
