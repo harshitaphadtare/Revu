@@ -1,59 +1,92 @@
----
-# Revu — Product Review Intelligence
+## Local Development
 
-> Smart scraping, summarization, and insights from product reviews
+### Backend (Windows)
 
-[![License: MIT]][license-badge] [![CI]][ci-badge] [![Build]][build-badge]
-
-Revu helps teams and researchers extract, analyze, and summarize product reviews at scale. It provides a scraper for collecting review bodies, sentiment analysis, topic extraction, and concise summaries to surface the most important customer feedback.
-
-Why Revu?
-- Collects full review text (not just ratings)
-- Runs safe, rate-limited scraping jobs with per-user quotas
-- Provides sentiment, topic extraction, and multi-backend summarization
-
-Key features
-- Manual HTML scraper with Playwright fallback for robust scraping
-- Per-user rate limiting and job queueing with Celery + Redis
-- Sentiment analysis and topic extraction pipelines
-- Summarization backends with fallback (Gemini → TextRank)
-- Docker-ready with a development and production-friendly setup
-
-Tech stack
-- Backend: FastAPI, Celery, Redis, MongoDB (Motor)
-- Scraper: requests + BeautifulSoup, Playwright (optional)
-- Frontend: React + Vite + TypeScript
-- Tests: pytest (backend), Jest/Vitest (frontend)
-
-Quick start — Docker (recommended)
-
-1. Copy environment template and fill values:
-
-```bash
-cp .env.example .env
-# edit .env with your values (MONGO_URI, JWT_SECRET, etc.)
-```
-
-2. Build and start all services:
-
-```bash
-docker-compose up --build -d
-```
-
-3. Open the app and docs:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API docs: http://localhost:8000/docs
-
-Local development (backend)
-
-```bash
+```powershell
 cd backend
 python -m venv ../.venv
-..\.venv\Scripts\activate   # Windows
+..\.venv\Scripts\activate
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+### Backend (macOS / Linux)
+
+```bash
+cd backend
+python3 -m venv ../.venv
+source ../.venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+## Playwright and Docker
+
+- Playwright is optional but recommended for robust scraping of JS-driven pages.
+- The `backend/Dockerfile` installs Playwright and its browser binaries during image build. That makes the scraper fallback available inside containers but increases image size and build time.
+
+If you prefer to install browsers selectively (smaller image), you can run inside the backend image build:
+
+```dockerfile
+RUN python -m playwright install chromium
+```
+
+Or, for local dev:
+
+```bash
+pip install playwright
+python -m playwright install
+```
+
+## Testing
+
+Run backend tests:
+
+```bash
+cd backend
+..\.venv\Scripts\activate   # or source ../.venv/bin/activate
+python -m pytest -q
+```
+
+Frontend build/test:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+## Contributing
+
+We welcome contributions — see `CONTRIBUTING.md` for detailed instructions on filing issues, proposing features, and submitting pull requests.
+
+## Security
+
+If you discover a security vulnerability, please do not open a public issue. Contact the maintainers privately at [MAINTAINER_EMAIL] (replace with your email) and provide steps to reproduce so we can triage and patch quickly.
+
+## License
+
+This project is licensed under the MIT License — see the `LICENSE` file for details.
+
+## Maintainers & Contact
+
+- Maintainer: harshitaphadtare
+- Contact: [MAINTAINER_EMAIL]
+  cd backend
+  python -m venv ../.venv
+  ..\.venv\Scripts\activate # Windows
+  pip install -r requirements.txt
+  python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+````
 
 Run backend tests:
 
@@ -61,7 +94,7 @@ Run backend tests:
 cd backend
 ..\.venv\Scripts\activate
 python -m pytest -q
-```
+````
 
 Local development (frontend)
 
@@ -72,15 +105,19 @@ npm run dev
 ```
 
 Contributing
+
 - See `CONTRIBUTING.md` for guidelines on reporting issues, proposing features, and submitting pull requests.
 
 License
+
 - This project is released under the MIT License — see the `LICENSE` file.
 
 CI / Workflows
+
 - This repository includes GitHub Actions workflows for continuous integration (tests/builds). See `.github/workflows/ci.yml` and `.github/workflows/test.yml`.
 
 Need help?
+
 - Check the Troubleshooting section in this README, the project Issues, or open a new issue.
 
 ---

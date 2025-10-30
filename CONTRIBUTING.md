@@ -3,6 +3,7 @@
 Thank you for your interest in contributing to Revu! We welcome improvements, bug reports, documentation updates, and new features. This file explains how to get started and what we expect from contributors.
 
 Table of contents
+
 - What to report (bugs & features)
 - Development setup (quick)
 - How to submit changes (PR flow)
@@ -11,7 +12,8 @@ Table of contents
 - Communication & support
 - Code of Conduct
 
-1) Reporting bugs
+1. Reporting bugs
+
 - Use GitHub Issues for bug reports: open a new issue in this repository.
 - When reporting, include:
   - A descriptive title and short summary
@@ -20,12 +22,14 @@ Table of contents
   - Environment details (OS, Python/Node versions, Docker or local)
   - Any relevant logs or error messages (attach snippets)
 
-2) Suggesting new features
+2. Suggesting new features
+
 - Use GitHub Issues and label the issue as a "feature request".
 - Explain the problem you're solving and include examples and proposed behavior.
 - If you can, sketch a short API/UX proposal or a mockup.
 
-3) Development setup (quick)
+3. Development setup (quick)
+
 - Clone the repository and install backend dependencies:
 
 ```bash
@@ -50,7 +54,8 @@ npm ci
 docker-compose up --build
 ```
 
-4) How to submit changes (pull request flow)
+4. How to submit changes (pull request flow)
+
 - Fork the repository on GitHub.
 - Create a feature branch in your fork (use a descriptive branch name):
 
@@ -63,7 +68,8 @@ git checkout -b feat/short-description
 - Push your branch to your fork and open a Pull Request (PR) against `main`.
 - In the PR description, explain the purpose of the PR, list the main changes, and reference any related issues (e.g., "Fixes #123").
 
-5) Coding style & tests
+5. Coding style & tests
+
 - Backend: follow common Python idioms (PEP8). We're lightweight on style enforcement but aim for readability.
 - Write tests for any non-trivial change. Run the test suite locally:
 
@@ -81,7 +87,8 @@ npm ci
 npm run build
 ```
 
-6) Commit messages & PR checklist
+6. Commit messages & PR checklist
+
 - Use clear, imperative commit messages (e.g., "Add X feature", "Fix Y bug").
 - PR checklist (include in PR description):
   - [ ] The code builds and tests pass locally
@@ -89,14 +96,17 @@ npm run build
   - [ ] Relevant documentation updated (README, docstrings)
   - [ ] No sensitive data (secrets) included
 
-7) Communication & support
+7. Communication & support
+
 - For design or large changes, open an issue first to discuss the approach.
 - Use GitHub Discussions (if enabled) or Issues for general questions.
 
-8) Code of Conduct
+8. Code of Conduct
+
 - By participating in this project you agree to abide by our Code of Conduct: see `CODE_OF_CONDUCT.md` for details.
 
 Thanks for improving Revu — contributors are the heart of open-source projects. We appreciate your time and care.
+
 # Contributing to Revu
 
 Thanks for your interest in contributing! This guide helps you set up your environment, follow our conventions, and submit a great PR.

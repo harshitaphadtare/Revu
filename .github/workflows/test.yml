@@ -2,7 +2,7 @@ name: Nightly Tests
 
 on:
   schedule:
-    - cron: '0 2 * * *' # daily at 02:00 UTC
+    - cron: "0 2 * * *" # daily at 02:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -13,7 +13,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Install backend deps
         working-directory: backend
         run: |
