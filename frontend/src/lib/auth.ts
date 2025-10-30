@@ -4,6 +4,7 @@ export type PublicUser = {
   email: string;
   name?: string | null;
   is_active: boolean;
+  email_verified?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -14,6 +15,13 @@ const USER_KEY = "revu.user";
 export function saveAuth(token: string, user: PublicUser) {
   try {
     localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    try { window.dispatchEvent(new Event("revu:auth-changed")); } catch {}
+  } catch {}
+}
+
+export function saveUser(user: PublicUser) {
+  try {
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     try { window.dispatchEvent(new Event("revu:auth-changed")); } catch {}
   } catch {}

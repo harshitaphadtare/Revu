@@ -12,6 +12,7 @@ app = FastAPI(
 app.include_router(analyze.router)
 app.include_router(fetch_review_job.router)
 app.include_router(auth.router)
+app.include_router(auth.account_router)
 
 @app.get("/")
 def home():

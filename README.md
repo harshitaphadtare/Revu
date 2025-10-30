@@ -116,6 +116,9 @@ Authentication
 
 - `POST /auth/signin` - returns JWT access token
 - `POST /auth/signup` - new user signup
+- `GET /auth/me` - get current user (requires Bearer token)
+- `PATCH /api/me` - update profile (requires Bearer token)
+- `POST /api/auth/change-password` - change password (requires Bearer token and current password)
 
 Start a scrape (requires Authorization header):
 
@@ -154,7 +157,6 @@ Other endpoints:
 
 - `GET /scrape-lock-status` - check if a scrape lock is held
 - `GET /scrape-status/{job_id}` - job progress/result
-- `GET /auth/me` - current user
 
 ## Scraper behavior and limits
 
@@ -184,8 +186,9 @@ Run backend tests:
 
 ```bash
 cd backend
-..\.venv\Scripts\activate
-python -m pytest -q
+# Activate virtual environment first
+python -m pytest tests/
+python -m pytest tests/test_account_routes.py  # profile & password endpoints
 ```
 
 Frontend tests/build:
@@ -214,7 +217,6 @@ This repository includes formatter and linter configurations to maintain consist
   - Ruff for linting
   - Isort for import sorting
   - Config: `pyproject.toml`
-  
 - **TypeScript/React** (frontend):
   - ESLint for linting
   - Prettier for formatting
