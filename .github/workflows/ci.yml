@@ -33,6 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Add backend to PYTHONPATH
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}/backend:${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
       - name: Install Playwright browsers (chromium)
         working-directory: backend
         run: python -m playwright install chromium
@@ -72,12 +75,12 @@ jobs:
           for page in "${PAGES[@]}"; do
             PAGE_FILE="frontend/src/components/Pages/${page}.tsx"
             if [ ! -f "$PAGE_FILE" ]; then
-              echo "❌ ERROR: Missing $PAGE_FILE"
+              echo "ERROR: Missing $PAGE_FILE"
               echo "Searching for case variants..."
               find frontend/src -iname "${page}.tsx" -print || true
               exit 1
             else
-              echo "✅ OK: ${page}.tsx present"
+              echo "OK: ${page}.tsx present"
             fi
           done
           echo "All required page components verified successfully"

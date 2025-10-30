@@ -1,8 +1,10 @@
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Info, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
 
 type Variant = "info" | "success" | "error" | "warning";
+type Theme = "light" | "dark";
 
 type ToastOptions = {
   progress?: number; // 0-100 for determinate; undefined for indeterminate
@@ -10,46 +12,44 @@ type ToastOptions = {
   description?: string;
 };
 
+const clampProgress = (value: number) => Math.max(0, Math.min(100, value));
+
 function getColors(variant: Variant) {
   switch (variant) {
     case "success":
       return {
         accent: "#10B981", // emerald-500
-        border: "rgba(16,185,129,0.2)",
-        text: "#065F46",
+        border: "rgba(16,185,129,0.25)",
         bar: "bg-emerald-500",
         bgLight: "#ffffff",
-        bgDark: "#0b0e12",
+        bgDark: "#0f172a",
         icon: CheckCircle2,
       };
     case "error":
       return {
         accent: "#EF4444", // red-500
-        border: "rgba(239,68,68,0.2)",
-        text: "#7F1D1D",
+        border: "rgba(239,68,68,0.25)",
         bar: "bg-red-500",
         bgLight: "#ffffff",
-        bgDark: "#0b0e12",
+        bgDark: "#111827",
         icon: AlertCircle,
       };
     case "warning":
       return {
         accent: "#F59E0B", // amber-500
-        border: "rgba(245,158,11,0.2)",
-        text: "#92400E",
+        border: "rgba(245,158,11,0.25)",
         bar: "bg-amber-500",
         bgLight: "#ffffff",
-        bgDark: "#0b0e12",
+        bgDark: "#0f172a",
         icon: AlertTriangle,
       };
     default:
       return {
         accent: "#3B82F6", // blue-500
-        border: "rgba(59,130,246,0.2)",
-        text: "#1E3A8A",
+        border: "rgba(59,130,246,0.25)",
         bar: "bg-blue-500",
         bgLight: "#ffffff",
-        bgDark: "#0b0e12",
+        bgDark: "#0f172a",
         icon: Info,
       };
   }
@@ -68,17 +68,18 @@ function Card({
   description?: string;
   variant: Variant;
   progress?: number;
-  theme: "light" | "dark";
+  theme: Theme;
 }) {
   const c = getColors(variant);
   const Icon = c.icon;
-  const glow = `shadow-[0_4px_12px_rgba(0,0,0,0.08)]`;
-  const baseBg = "#ffffff";
-  const textColor = "#111827";
-  const subText = "#6B7280";
-  const borderColor = "rgba(229, 231, 235, 1)";
+  const glow =
+    theme === "dark" ? "shadow-[0_20px_36px_rgba(0,0,0,0.45)]" : "shadow-[0_4px_12px_rgba(0,0,0,0.08)]";
+  const baseBg = theme === "dark" ? c.bgDark : c.bgLight;
+  const textColor = theme === "dark" ? "#E5E7EB" : "#111827";
+  const subText = theme === "dark" ? "#9CA3AF" : "#6B7280";
+  const dividerColor = theme === "dark" ? "rgba(148,163,184,0.2)" : "rgba(229,231,235,1)";
+  const trackColor = theme === "dark" ? "rgba(71,85,105,0.55)" : "#E5E7EB";
 
-  // progress styles
   const hasDeterminate = typeof progress === "number" && progress >= 0 && progress <= 100;
 
   return (
@@ -89,24 +90,23 @@ function Card({
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.15, ease: "easeOut" }}
         className={`relative ${glow}`}
-        style={{ 
-          backgroundColor: baseBg, 
-          border: `1px solid ${borderColor}`,
-          borderRadius: '12px',
-          minWidth: '320px',
-          maxWidth: 'min(90vw, 440px)',
-          padding: '12px 40px 12px 16px'
+        style={{
+          backgroundColor: baseBg,
+          border: `1px solid ${c.border}`,
+          borderRadius: "12px",
+          minWidth: "320px",
+          maxWidth: "min(90vw, 440px)",
+          padding: "12px 40px 12px 16px",
         }}
       >
         <div className="flex items-center gap-3">
-          {/* icon */}
-          <Icon 
+          <Icon
             className="flex-shrink-0"
-            style={{ 
-              width: 20, 
+            style={{
+              width: 20,
               height: 20,
               color: c.accent,
-              strokeWidth: 2
+              strokeWidth: 2,
             }}
           />
           <div className="flex-1 min-w-0">
@@ -120,32 +120,37 @@ function Card({
             ) : null}
           </div>
         </div>
-        
-        {/* close button */}
+
         <button
           aria-label="Dismiss"
           onClick={() => toast.dismiss(t)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-gray-100 transition-colors"
-          style={{ color: subText }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-800/60"
+          style={{
+            color: subText,
+            backgroundColor: "transparent",
+          }}
         >
           <X className="h-4 w-4" />
         </button>
 
-        {/* progress bar - only show when progress is defined */}
         {typeof progress === "number" && (
-          <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${borderColor}` }}>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-gray-200">
+          <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${dividerColor}` }}>
+            <div
+              className="h-1 w-full overflow-hidden rounded-full"
+              style={{ backgroundColor: trackColor }}
+            >
               {hasDeterminate ? (
                 <div className={`h-full ${c.bar}`} style={{ width: `${progress}%` }} />
               ) : (
-                <div className={`h-full ${c.bar} animate-[shimmer_1.2s_infinite] relative`}
-                     style={{ width: "40%" }} />
+                <div
+                  className={`h-full ${c.bar} animate-[shimmer_1.2s_infinite] relative`}
+                  style={{ width: "40%" }}
+                />
               )}
             </div>
           </div>
         )}
 
-        {/* shimmer keyframes */}
         {typeof progress === "number" && (
           <style>{`
             @keyframes shimmer { 0%{ transform: translateX(-60%);} 100%{ transform: translateX(220%);} }
@@ -157,58 +162,89 @@ function Card({
 }
 
 export function useToast() {
-  function show(message: string, variant: Variant = "info", opts: ToastOptions = {}) {
-    const duration = typeof opts.progress === "number" ? 60000 : opts.duration ?? (variant === "error" ? 5000 : 3200);
-    const prefersDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    toast.custom(
-      (t) => (
-        <Card
-          t={t}
-          message={message}
-          description={opts.description}
-          variant={variant}
-          progress={opts.progress}
-          theme={prefersDark ? "dark" : "light"}
-        />
-      ),
-      { duration }
-    );
-  }
+  const resolveTheme = useCallback<() => Theme>(() => {
+    if (typeof document === "undefined") {
+      return "light";
+    }
+    return document.documentElement.classList.contains("dark") ? "dark" : "light";
+  }, []);
 
-  function withProgress(message: string, variant: Variant = "info", initial = 0) {
-    const prefersDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    const id = toast.custom(
-      (t) => (
-        <Card t={t} message={message} variant={variant} progress={initial} theme={prefersDark ? "dark" : "light"} />
-      ),
-      { duration: 60000 }
-    );
-    return {
-      id,
-      update: (p: number, msg?: string) =>
-        toast.custom(
-          (t) => (
-            <Card
-              t={t}
-              message={msg ?? message}
-              variant={variant}
-              progress={Math.max(0, Math.min(100, p))}
-              theme={prefersDark ? "dark" : "light"}
-            />
-          ),
-          { id, duration: 60000 }
+  const show = useCallback(
+    (message: string, variant: Variant = "info", opts: ToastOptions = {}) => {
+      const duration =
+        typeof opts.progress === "number"
+          ? 60000
+          : opts.duration ??
+            (variant === "error" ? 5000 : variant === "warning" ? 4500 : 3200);
+      const theme = resolveTheme();
+      toast.custom(
+        (t) => (
+          <Card
+            t={t}
+            message={message}
+            description={opts.description}
+            variant={variant}
+            progress={opts.progress}
+            theme={theme}
+          />
         ),
-      success: (msg?: string) => show(msg ?? "Done", "success"),
-      error: (msg?: string) => show(msg ?? "Failed", "error"),
-      dismiss: () => toast.dismiss(id),
-    };
-  }
+        { duration }
+      );
+    },
+    [resolveTheme]
+  );
 
-  return {
-    info: (msg: string, opts?: ToastOptions) => show(msg, "info", opts),
-    success: (msg: string, opts?: ToastOptions) => show(msg, "success", opts),
-    error: (msg: string, opts?: ToastOptions) => show(msg, "error", opts),
-    warning: (msg: string, opts?: ToastOptions) => show(msg, "warning", opts),
-    progress: withProgress,
-  };
+  const withProgress = useCallback(
+    (message: string, variant: Variant = "info", initial = 0) => {
+      const theme = resolveTheme();
+      const id = toast.custom(
+        (t) => (
+          <Card
+            t={t}
+            message={message}
+            variant={variant}
+            progress={clampProgress(initial)}
+            theme={theme}
+          />
+        ),
+        { duration: 60000 }
+      );
+
+      return {
+        id,
+        update: (progress: number, msg?: string, opts: Omit<ToastOptions, "progress"> = {}) => {
+          const nextTheme = resolveTheme();
+          toast.custom(
+            (t) => (
+              <Card
+                t={t}
+                message={msg ?? message}
+                description={opts.description}
+                variant={variant}
+                progress={clampProgress(progress)}
+                theme={nextTheme}
+              />
+            ),
+            { id, duration: opts.duration ?? 60000 }
+          );
+        },
+        success: (msg?: string, opts?: ToastOptions) => show(msg ?? "Done", "success", opts),
+        error: (msg?: string, opts?: ToastOptions) => show(msg ?? "Failed", "error", opts),
+        warning: (msg?: string, opts?: ToastOptions) => show(msg ?? "Heads up", "warning", opts),
+        dismiss: () => toast.dismiss(id),
+      };
+    },
+    [resolveTheme, show]
+  );
+
+  return useMemo(
+    () => ({
+      info: (msg: string, opts?: ToastOptions) => show(msg, "info", opts),
+      success: (msg: string, opts?: ToastOptions) => show(msg, "success", opts),
+      error: (msg: string, opts?: ToastOptions) => show(msg, "error", opts),
+      warning: (msg: string, opts?: ToastOptions) => show(msg, "warning", opts),
+      progress: withProgress,
+    }),
+    [show, withProgress]
+  );
 }
