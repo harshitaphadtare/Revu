@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
-import { Package, User, Search, Download, Save, RotateCcw, Sparkles } from "lucide-react";
-import { ThemeToggle } from "@/components/utils/ThemeToggle";
+import { Package, Search, Download, Save, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
