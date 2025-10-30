@@ -1,5 +1,128 @@
 # Contributing to Revu
 
+Thank you for your interest in contributing to Revu! We welcome bug reports, documentation updates, tests, and new features.
+
+This guide explains how to get started, the recommended development workflow, and what we expect from contributors.
+
+## Table of contents
+
+- Getting started
+- Development workflow
+- Branching & commits
+- Testing & verification
+- Code style & linting
+- Submitting a pull request
+- Reporting security issues
+
+## Getting started
+
+1. Fork the repository and clone your fork:
+
+```bash
+git clone <your-fork-url>
+cd Revu
+```
+
+2. Prerequisites
+
+- Node 18+ and npm
+- Python 3.11+
+- Docker & docker-compose (recommended for full-stack parity)
+
+3. Quick setup
+
+Backend (virtualenv):
+
+```bash
+cd backend
+python -m venv ../.venv
+..\.venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Or run everything with Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+Copy environment templates where provided:
+
+- `cp .env.example .env`
+- `cp backend/.env.example backend/.env`
+
+## Development workflow
+
+- Prefer `docker-compose` for an end-to-end environment that matches CI and developer expectations.
+- For iterative backend work, run the FastAPI app with Uvicorn and run Celery workers locally.
+- Use FastAPI's built-in OpenAPI docs at `http://localhost:8000/docs` to exercise routes.
+
+## Branching & commits
+
+- Branch naming: `feat/<short-desc>`, `fix/<short-desc>`, `chore/<what>`, `docs/<area>`
+- Keep commits small and focused. Use imperative commit messages (e.g., "Add user signup endpoint").
+- We encourage Conventional Commits but do not enforce them strictly.
+
+## Testing & verification
+
+Run backend tests:
+
+```bash
+cd backend
+..\.venv\Scripts\activate
+python -m pytest -q
+```
+
+Frontend build and tests:
+
+```bash
+cd frontend
+npm ci
+npm run build
+npm run test   # if tests exist
+```
+
+If you add routes, services, or components, include unit tests and, when appropriate, small integration tests.
+
+## Code style & linting
+
+- Python: follow PEP 8 for readability. If you use formatters (black, ruff), run them locally before pushing.
+- TypeScript/React: keep code modular and typed. Prefer small functional components and clear prop shapes.
+
+## Submitting a Pull Request
+
+1. Ensure your branch is up to date with `main`.
+2. Open a concise PR describing the purpose, the key changes, and any trade-offs.
+3. Link related issues (e.g., "Fixes #123").
+4. Add a short testing/verification checklist and any manual steps required.
+5. Run the test-suite and ensure no secrets are included.
+
+Suggested PR checklist to include in the description:
+
+- [ ] Tests pass locally (`python -m pytest`)
+- [ ] Relevant documentation updated (README, docstrings)
+- [ ] No sensitive data (secrets) included
+- [ ] Additions are covered by tests where reasonable
+
+## Reporting security issues
+
+If you discover a security vulnerability, please do not open a public issue. Instead, see `SECURITY.md` for private reporting instructions.
+
+## Contact
+
+If you have questions about contribution workflow, open an issue or contact the maintainers via the repository.
+
+Thank you — contributors make this project better!
+# Contributing to Revu
+
 Thank you for your interest in contributing to Revu! We welcome improvements, bug reports, documentation updates, and new features. This file explains how to get started and what we expect from contributors.
 
 Table of contents

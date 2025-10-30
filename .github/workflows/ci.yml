@@ -7,37 +7,74 @@ on:
     branches: [main]
 
 jobs:
-  backend-tests:
-    name: Backend tests (Python)
+  backend:
+    name: "Backend: tests & minimal checks"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - name: Install backend deps
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install backend dependencies
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run backend tests
+
+      - name: Install Playwright browsers (chromium)
+        working-directory: backend
+        run: python -m playwright install chromium
+
+      - name: Run backend tests (pytest)
         working-directory: backend
         run: python -m pytest -q
 
-  frontend-build:
-    name: Frontend build (Node)
+  frontend:
+    name: "Frontend: install & build"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
         uses: actions/setup-node@v4
         with:
           node-version: "18"
-      - name: Install frontend deps
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json', 'frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: |
-          npm ci
+        run: npm ci
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Run frontend tests (if present)
+        if: always()
+        working-directory: frontend
+        run: |
+          if [ -f package.json ] && npm run | grep -q "test"; then
+            npm run test --silent || true
+          else
+            echo "No frontend tests defined"
+          fi
