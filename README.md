@@ -1,215 +1,74 @@
-# Revu - Product Review Intelligence Platform
+# Overview
 
-A comprehensive platform for scraping, analyzing sentiment and topics, and summarizing product review insights. Built with React frontend and FastAPI backend with Celery workers, Redis, and MongoDB.
+Revu is a product review intelligence platform that scrapes product reviews (currently Amazon), analyzes sentiment and topics, and generates concise summaries and insight reports. It pairs a FastAPI backend (with Celery workers), a React + Vite frontend, Redis for queueing, and MongoDB for persistence.
 
-## 🚀 Quick Start
+This README provides a quick developer and operator guide: setup, API examples, project layout, testing, deployment notes, and contribution guidelines.
 
-### Option 1: Docker Compose (Recommended)
-
-1. **Clone and setup environment**:
-
-   ```bash
-   git clone <your-repo-url>
-   cd Revu
-   ```
-
-2. **Create environment file**:
-
-   ```bash
-   # Create .env file in the root directory
-   cp .env.example .env  # If available, or create manually
-   ```
-
-3. **Configure environment variables**:
-
-   ```env
-   MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/?retryWrites=true&w=majority
-   MONGO_DB=revu
-   JWT_SECRET=your-super-secret-jwt-key-here
-   JWT_EXPIRES_MIN=1440
-   ```
-
-4. **Start all services**:
-
-   ```bash
-   docker-compose up --build
-   ```
-
-5. **Access the application**:
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8000
-   - **API Documentation**: http://localhost:8000/docs
-   - **Redis**: localhost:6379
-
-### Option 2: Manual Development Setup
-
-#### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- Redis server
-- MongoDB Atlas account (or local MongoDB)
-
-#### Backend Setup
-
-1. **Navigate to backend directory**:
-
-   ```bash
-   cd backend
-   ```
-
-2. **Create virtual environment**:
-
-   ```bash
-   # Windows
-   python -m venv ..\.venv
-   ..\.venv\Scripts\activate
-
-   # macOS/Linux
-   python -m venv ../.venv
-   source ../.venv/bin/activate
-   ```
-
-3. **Install dependencies**:
-
-   ```bash
-   pip install -r requirements.txt
-   python -m playwright install
-   ```
-
-4. **Start Redis** (if not using Docker):
-
-   ```bash
-   # Using Docker
-   docker run -d -p 6379:6379 --name revu-redis redis:7-alpine
-
-   # Or install Redis locally
-   ```
-
-5. **Set environment variables**:
-
-   ```bash
-   # Windows
-   set MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/?retryWrites=true&w=majority
-   set MONGO_DB=revu
-   set JWT_SECRET=your-super-secret-jwt-key-here
-   set JWT_EXPIRES_MIN=1440
-   set REDIS_URL=redis://localhost:6379/0
-
-   # macOS/Linux
-   export MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/?retryWrites=true&w=majority
-   export MONGO_DB=revu
-   export JWT_SECRET=your-super-secret-jwt-key-here
-   export JWT_EXPIRES_MIN=1440
-   export REDIS_URL=redis://localhost:6379/0
-   ```
-
-6. **Start the backend API**:
-
-   ```bash
-   python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-
-7. **Start the Celery worker** (in a new terminal):
-
-   ```bash
-   cd backend
-   # Activate the same virtual environment
-   ..\.venv\Scripts\activate  # Windows
-   # source ../.venv/bin/activate  # macOS/Linux
-
-   celery -A app.worker.celery_app worker -l info --pool=solo
-   ```
-
-#### Frontend Setup
-
-1. **Navigate to frontend directory**:
-
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-3. **Start development server**:
-
-   ```bash
-   npm run dev
-   ```
-
-4. **Access the frontend**: http://localhost:3000
-
-## 🏗️ Project Structure
+## Project structure
 
 ```
 Revu/
-├── backend/                 # FastAPI backend
+├── backend/
 │   ├── app/
-│   │   ├── db/             # Database configuration
-│   │   ├── models/         # Data models and schemas
-│   │   ├── routes/         # API endpoints
-│   │   ├── services/       # Business logic
-│   │   ├── utils/          # Utility functions
-│   │   ├── main.py         # FastAPI app
-│   │   └── worker.py       # Celery worker
-│   ├── tests/              # Test files
-│   ├── Dockerfile          # Backend container
-│   └── requirements.txt    # Python dependencies
-├── frontend/               # React frontend
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── styles/         # CSS styles
-│   │   └── main.tsx        # App entry point
-│   ├── package.json        # Node dependencies
-│   └── vite.config.ts      # Vite configuration
-├── docker-compose.yml      # Docker services
-└── README.md              # This file
+│   │   ├── main.py                # FastAPI app
+│   │   ├── worker.py              # Celery worker setup
+│   │   ├── routes/                # API route handlers
+│   │   ├── services/              # Scraper, summarizer, sentiment, topic extractor
+│   │   └── models/                # Pydantic schemas
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/                       # React + Vite app
+│   └── package.json
+├── docker-compose.yml
+├── README.md
+├── LICENSE
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+└── tests/                         # Small end-to-end and unit tests
 ```
 
-## 🔧 Environment Variables
+## Quick start (Docker — recommended)
 
-| Variable              | Description               | Required | Default                    |
-| --------------------- | ------------------------- | -------- | -------------------------- |
-| `MONGO_URI`           | MongoDB connection string | Yes      | -                          |
-| `MONGO_DB`            | Database name             | No       | `revu`                     |
-| `JWT_SECRET`          | Secret key for JWT tokens | Yes      | -                          |
-| `JWT_EXPIRES_MIN`     | Token expiry in minutes   | No       | `60`                       |
-| `REDIS_URL`           | Redis connection URL      | No       | `redis://localhost:6379/0` |
-| `SCRAPER_MAX_REVIEWS` | Max reviews to scrape     | No       | `4000`                     |
-| `SUMMARY_BACKEND`     | Summarization backend     | No       | `gemini` (Gemini→TextRank)   |
-| `SUMMARY_BACKEND`     | Summarization backend     | No       | `gemini` (Gemini→TextRank)   |
-| `GEMINI_API_KEY`      | Gemini API key            | No       | -                          |
+1. Copy environment template and set secrets:
 
-## 📡 API Endpoints
+```bash
+cp .env.example .env
+# Edit .env: MONGO_URI, JWT_SECRET, REDIS_URL, SCRAPER_MAX_REVIEWS, GEMINI_API_KEY (optional)
+```
 
-### Authentication
+2. Build and start everything:
 
 - `POST /auth/signup` - User registration
 - `POST /auth/signin` - User login
 - `GET /auth/me` - Get current user (requires Bearer token)
 - `PATCH /api/me` - Update profile (name/email; requires Bearer token; changing email marks it unverified)
 - `POST /api/auth/change-password` - Change password (requires Bearer token and current password)
+```bash
+docker-compose up --build -d
+```
 
-### Analysis
+3. Verify services:
 
-- `POST /analyze/` - Analyze review sentiment and topics
+- Frontend: http://localhost:3000
+- Backend API (Swagger): http://localhost:8000/docs
+- Redis: localhost:6379
 
-### Scraping
+Notes:
 
-- `POST /start-scrape` - Start scraping job
-- `GET /scrape-status/{job_id}` - Get scraping progress/results
-- `POST /cancel-scrape/{job_id}` - Cancel scraping job
-- `GET /scrape-lock-status` - Check scraping lock status
+- The backend Dockerfile installs Playwright and browser binaries by default to enable the scraper fallback for JS-heavy pages. This increases image size.
 
-**Interactive API Documentation**: http://localhost:8000/docs
+## Local development (backend)
 
-## 🧪 Testing
+```bash
+cd backend
+python -m venv ../.venv
+..\.venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-### Backend Tests
+Start a worker (separate terminal):
 
 ```bash
 cd backend
@@ -218,116 +77,132 @@ python -m pytest tests/
 python -m pytest tests/test_account_routes.py  # profile & password endpoints
 ```
 
-### Frontend Build
+Frontend (local):
 
 ```bash
 cd frontend
-npm run build
+npm ci
+npm run dev
 ```
 
-## 🐳 Docker Services
+## Environment variables
 
-The Docker Compose setup includes:
+Important variables (see `.env.example`):
 
-- **redis**: Redis server for caching and job queue
-- **backend**: FastAPI application with auto-reload
-- **worker**: Celery worker for background tasks
+- MONGO_URI - MongoDB connection string
+- JWT_SECRET - JWT signing secret
+- REDIS_URL - Redis connection URL
+- SCRAPER_MAX_REVIEWS - Default max per scrape (capped at 300)
+- SUMMARY_BACKEND - `gemini` or `textrank`
 
-## 🚨 Troubleshooting
+## API - endpoints & examples
 
-## 📝 Summarization Backends
+The backend exposes REST endpoints. Below are commonly used endpoints and examples.
 
-Revu supports two summarization backends with automatic fallback:
+Authentication
 
-Fallback order: Gemini → TextRank
+- `POST /auth/signin` - returns JWT access token
+- `POST /auth/signup` - new user signup
 
-- Gemini (recommended for highest fluency)
-
-   - Set `SUMMARY_BACKEND=gemini`
-   - Provide `GEMINI_API_KEY` (your Google/Vertex/Gemini API key)
-   - Works in Docker: key is passed via `docker-compose.yml`
-
-- TextRank (fastest, no ML)
-   - Set `SUMMARY_BACKEND=textrank` or omit the API key
-   - Frequency-based extractive summary; very fast and offline
-
-Gemini setup (Docker):
+Start a scrape (requires Authorization header):
 
 ```bash
-# In .env (root)
-SUMMARY_BACKEND=gemini
-GEMINI_API_KEY=your_key_here
-
-docker compose up --build
+curl -X POST "http://localhost:8000/start-scrape" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.amazon.com/dp/B0FQG1LPVF"}'
 ```
 
-Notes:
+Response:
 
-- Large inputs (>4000 reviews) are automatically chunked and summarized with a map-reduce step for coherence.
+```json
+{ "job_id": "<celery-task-id>" }
+```
 
-### Common Issues
+Check status/result:
 
-1. **Port 8000 already in use**:
+```bash
+curl "http://localhost:8000/scrape-status/<job_id>"
+```
 
-   ```bash
-   # Stop existing Docker containers
-   docker stop revu-backend
+Cancel job:
 
-   # Or use a different port
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
-   ```
+```bash
+curl -X POST "http://localhost:8000/cancel-scrape/<job_id>"
+```
 
-2. **Redis connection issues**:
+Analyze (run analysis on a set of reviews / custom input):
 
-   ```bash
-   # Check if Redis is running
-   docker ps | grep redis
+```bash
+curl -X POST "http://localhost:8000/analyze/" -H "Content-Type: application/json" -d '{"text": "This product is great..."}'
+```
 
-   # Restart Redis if needed
-   docker restart revu-redis
-   ```
+Other endpoints:
 
-3. **MongoDB connection issues**:
+- `GET /scrape-lock-status` - check if a scrape lock is held
+- `GET /scrape-status/{job_id}` - job progress/result
+- `GET /auth/me` - current user
 
-   - Verify your MongoDB Atlas connection string
-   - Check if your IP is whitelisted in MongoDB Atlas
-   - Ensure the database user has proper permissions
+## Scraper behavior and limits
 
-4. **Frontend not connecting to backend**:
-   - Check if backend is running on port 8000
-   - Verify CORS settings in backend
-   - Check browser console for errors
+- Default per-user daily limit: 5 scrapes/day (enforced via Redis)
+- Each scrape is capped at 300 reviews to avoid blocking
+- The scraper tries requests+BeautifulSoup first, then falls back to Playwright (headless) when needed
+- Respect robots and site terms: this tool is provided for research and controlled usage
 
-### Development Tips
+## Example: predict-like flow (frontend integration)
 
-- Use `docker-compose logs -f` to view real-time logs
-- The backend supports hot-reload in development mode
-- Frontend runs on port 3000 with hot-reload enabled
-- Redis data persists in Docker volumes
+In `frontend/src/lib/api.ts` there are helpers like `apiStartScrape` and `apiLockStatus` used by the UI. The typical flow:
 
-## 🤝 Contributing
+1. User supplies Amazon product URL in the frontend.
+2. Frontend calls `POST /start-scrape` with JWT Authorization header.
+3. Backend enqueues Celery job; frontend polls `GET /scrape-status/{job_id}`.
+4. Once job succeeds, the frontend displays extracted reviews, sentiment, topics, and summary.
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+## Outputs & saved artifacts
 
-See `CONTRIBUTING.md` for detailed guidelines.
+- `saved_models/` - trained models (if using summarizer/ML pipelines)
+- `output/` - generated summaries, CSVs, and visualizations
+- `logs/` - application and worker logs
 
-## 📄 License
+## Testing
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Run backend tests:
 
-## 🆘 Support
+```bash
+cd backend
+..\.venv\Scripts\activate
+python -m pytest -q
+```
 
-If you encounter any issues:
+Frontend tests/build:
 
-1. Check the troubleshooting section above
-2. Review the API documentation at http://localhost:8000/docs
-3. Check the logs: `docker-compose logs -f`
-4. Open an issue on GitHub
+```bash
+cd frontend
+npm ci
+npm run build
+npm run test
+```
 
----
+## Development tips & debugging
 
-**Happy coding! 🎉**
+- If Vite or CI fails with missing file errors on Linux, check case-sensitivity of filenames and commits (Windows is case-insensitive).
+- Add temporary debug steps in `.github/workflows/ci.yml` to `ls` suspect directories if CI can't find a file.
+- Increase `pause_seconds` in `scraper.py` if you observe frequent captcha/blocking.
+
+## Contributing
+
+See `CONTRIBUTING.md` for bug reports, feature requests, and PR workflow. Be sure to run tests and include clear descriptions in PRs.
+
+## Code of Conduct
+
+Our community follows the `CODE_OF_CONDUCT.md`. Please read and adhere to it.
+
+## License
+
+This project is licensed under the MIT License — see the `LICENSE` file for details.
+
+## Maintainers
+
+- Primary maintainer: harshitaphadtare
+- Contact: harshita.codewiz@gmail.com

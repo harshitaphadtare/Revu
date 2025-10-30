@@ -1,595 +1,641 @@
-import requests
-from bs4 import BeautifulSoup
-import time
+"""Product review scraper.
+
+Consolidated manual HTML scraper (requests + BeautifulSoup) for Amazon reviews.
+SerpApi integration has been removed from the codebase.
+
+Features:
+- Extract reviewer name, star rating, review date, title, and body
+- Simple pagination via pageNumber until ~max_reviews (default 300)
+- IP protection: user-agent rotation, configurable delays, retry logic
+- Basic error handling for network and parsing issues
+- Progress tracking and cancellation support
+"""
+import os
 import random
 import re
-from datetime import date, datetime
-from dateutil import parser
-from dateutil.relativedelta import relativedelta
-from typing import List, Optional, Callable
-from urllib.parse import urljoin, urlparse, parse_qs
+import time
+from typing import List, Optional, Callable, Tuple, Dict, Any
+from urllib.parse import urlparse
+
+import requests
+from bs4 import BeautifulSoup
+
 from app.models.schemas import SingleReview
-from playwright.sync_api import sync_playwright
 
-def get_headers():
+# Pool of user agents for rotation to avoid detection
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+]
+
+
+def get_asin_from_url(url: str) -> Optional[str]:
+    """Extract a 10-character ASIN from an Amazon product URL.
+
+    Returns the ASIN (string) if found, otherwise None.
     """
-    Generate random headers to mimic different browsers.
+    try:
+        m = re.search(r"/(?:dp|gp/product|product-reviews)/([A-Za-z0-9]{10})", url)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def _extract_asin_from_url(url: str) -> Optional[str]:
+    """Wrapper that uses get_asin_from_url helper.
+
+    Keeps a private name for backward compatibility with existing callers in this module.
     """
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Gecko/20100101 Firefox/119.0"
-    ]
-    # include Accept-Language to reduce localization redirects/variations
-    return {"User-Agent": random.choice(user_agents), "Accept-Language": "en-US,en;q=0.9"}
+    return get_asin_from_url(url)
 
-# Amazon Scraper
-def scrape_amazon_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional[int] = None, progress_cb: Optional[Callable[[int], None]] = None) -> tuple:
+
+def _scrape_amazon_reviews_raw(
+    url: str,
+    *,
+    max_reviews: int = 300,
+    session: Optional[requests.Session] = None,
+    timeout: int = 20,
+    pause_seconds: float = 1.0,
+    progress_cb: Optional[Callable[[int], None]] = None,
+    cancel_cb: Optional[Callable[[], None]] = None,
+) -> List[Dict[str, Optional[str]]]:
+    """Scrape reviews from an Amazon product URL using requests + BeautifulSoup.
+
+    Returns a list of dicts with keys: reviewer, rating, date, title, body
+
+    Raises:
+        ValueError: if URL invalid
+        requests.exceptions.RequestException: for network errors
     """
-    Scrape reviews from an Amazon product page.
-    Args:
-        url (str): The URL of the Amazon product page.
-        max_pages (int): Maximum number of review pages to scrape.
-    Returns:
-        List[SingleReview]: A list of scraped reviews.
-    """
-    reviews: List[SingleReview] = []
+    # If the provided URL is not already a reviews page, try to find the
+    # canonical "all reviews" link on the product page and use that as the
+    # base for pagination. This keeps the behavior closer to what a browser
+    # would follow and handles localized domains.
+    def find_reviews_base(prod_url: str, sess: requests.Session) -> Optional[str]:
+        # If URL already looks like a reviews URL, use it
+        if "/product-reviews/" in prod_url or "/reviews/" in prod_url:
+            return prod_url
 
-    total_pages = max_pages
-    if max_reviews:
-        # estimate pages required; Amazon typically 10 reviews per page
-        total_pages = max(1, (max_reviews // 10) + 1)
-
-    product_meta = {"name": None, "price": None, "price_value": None, "currency": None}
-
-    for idx, page in enumerate(range(1, total_pages + 1), start=1):
-        page_url = f"{url}?pageNumber={page}"
         try:
-            response = requests.get(page_url, headers=get_headers(), timeout=10)
-            if response.status_code != 200:
-                print(f"Failed to fetch page {page} (status: {response.status_code})")
-                break
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            # Try a few common Amazon review selectors (data-hook is reliable)
-            review_blocks = (
-                soup.select('div[data-hook="review"]')
-                or soup.select('.a-section.review')
-                or soup.select('.review')
-                or soup.select('.a-section.review.aok-relative')
-            )
-
-            # If we didn't find reviews on the provided URL, try to locate the "See all reviews" / product-reviews page
-            if not review_blocks and idx == 1:
-                try:
-                    # Common 'see all reviews' link selectors
-                    all_reviews_anchor = (
-                        soup.select_one('a[data-hook="see-all-reviews-link-foot"]')
-                        or soup.find('a', string=lambda t: t and 'See all reviews' in t)
-                        or soup.find('a', href=lambda h: h and 'product-reviews' in h)
-                    )
-                    if all_reviews_anchor and all_reviews_anchor.get('href'):
-                        reviews_href = all_reviews_anchor.get('href')
-                        reviews_url = reviews_href if reviews_href.startswith('http') else urljoin(url, reviews_href)
-                        # fetch the reviews page and re-parse
-                        r2 = requests.get(reviews_url, headers=get_headers(), timeout=10)
-                        if r2.status_code == 200:
-                            soup = BeautifulSoup(r2.text, 'html.parser')
-                            review_blocks = (
-                                soup.select('div[data-hook="review"]')
-                                or soup.select('.a-section.review')
-                                or soup.select('.review')
-                                or soup.select('.a-section.review.aok-relative')
-                            )
-                            # update page_url so pagination links constructed later work
-                            page_url = reviews_url
-                except Exception:
-                    pass
-
-            # If reviews are present but appear truncated (has 'Read more' expander), use Playwright to expand them
-            try:
-                truncated = False
-                for b in review_blocks:
-                    if b.select_one('a.a-expander-prompt') or 'Read more' in (b.get_text() or ''):
-                        truncated = True
-                        break
-                if review_blocks and truncated:
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            }
+            r = sess.get(prod_url, headers=headers, timeout=15)
+            r.raise_for_status()
+            s = BeautifulSoup(r.text, "html.parser")
+            # Common anchors pointing to all reviews
+            selectors = [
+                "a[data-hook='see-all-reviews-link-foot']",
+                "a[data-hook='see-all-reviews-link']",
+                "a[href*='/product-reviews/']",
+                "a:has(span#acrCustomerReviewText)",
+            ]
+            for sel in selectors:
+                el = s.select_one(sel)
+                if el and el.get('href'):
+                    href = el.get('href')
+                    # Build absolute URL if necessary
+                    if href.startswith('http'):
+                        return href
+                    parsed = urlparse(prod_url)
+                    base = f"{parsed.scheme}://{parsed.netloc}"
+                    return base + href
+            # Fallback: search for text links that look like "See all reviews"
+            for a in s.find_all('a'):
+                txt = (a.get_text() or '').strip().lower()
+                if 'see all reviews' in txt or 'see all customer reviews' in txt or 'all reviews' == txt:
+                    href = a.get('href')
+                    if href:
+                        if href.startswith('http'):
+                            return href
+                        parsed = urlparse(prod_url)
+                        base = f"{parsed.scheme}://{parsed.netloc}"
+                        return base + href
+            # Last resort: build a canonical product-reviews URL from ASIN if present
+            asin = _extract_asin_from_url(prod_url)
+            if asin:
+                parsed = urlparse(prod_url)
+                # Try locale-aware path first, then fallback
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                candidates = [
+                    f"{base}/product-reviews/{asin}",
+                    f"{base}/-/en/product-reviews/{asin}",
+                ]
+                for c in candidates:
                     try:
-                        with sync_playwright() as p:
-                            browser = p.chromium.launch(headless=True)
-                            page_ctx = browser.new_page()
-                            page_ctx.goto(page_url, timeout=20000)
-                            # Click all expander prompts to reveal full review bodies
-                            try:
-                                page_ctx.evaluate("() => { document.querySelectorAll('a.a-expander-prompt').forEach(e => e.click()); }")
-                                page_ctx.wait_for_timeout(500)
-                            except Exception:
-                                pass
-                            html2 = page_ctx.content()
-                            soup = BeautifulSoup(html2, 'html.parser')
-                            review_blocks = (
-                                soup.select('div[data-hook="review"]')
-                                or soup.select('.a-section.review')
-                                or soup.select('.review')
-                                or soup.select('.a-section.review.aok-relative')
-                            )
-                            try:
-                                browser.close()
-                            except Exception:
-                                pass
+                        resp = sess.get(c, headers=headers, timeout=10)
+                        if resp.status_code == 200:
+                            return c
                     except Exception:
                         pass
+        except Exception:
+            return None
+        return None
+
+    sess = session or requests.Session()
+
+    reviews_base = find_reviews_base(url, sess)
+    if not reviews_base:
+        # If we couldn't find a dedicated reviews page, attempt to use the
+        # product URL directly — some sites render reviews on the product page.
+        reviews_base = url
+
+    # Derive a function that composes the paginated reviews URL. Amazon uses
+    # `pageNumber` as a query param on most locales; so append/replace it.
+    def reviews_url(page_num: int) -> str:
+        parsed = urlparse(reviews_base)
+        q = f"reviewerType=all_reviews&sortBy=recent&pageNumber={page_num}"
+        # If reviews_base already has query params, preserve them when possible
+        if parsed.query:
+            # Strip existing pageNumber if present
+            base_q = re.sub(r'pageNumber=\d+', '', parsed.query).strip('&')
+            if base_q:
+                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{base_q}&{q}"
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{q}"
+
+    sess = session or requests.Session()
+    
+    results: List[Dict[str, Optional[str]]] = []
+    page = 1
+    consecutive_failures = 0
+    max_consecutive_failures = 3
+
+    while len(results) < max_reviews:
+        # Check for cancellation
+        if cancel_cb:
+            try:
+                cancel_cb()
+            except Exception:
+                raise
+        
+        # Rotate user agent for each request
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Referer": url,
+        }
+        
+        url_page = reviews_url(page)
+        
+        # Retry logic with exponential backoff
+        retry_count = 0
+        max_retries = 3
+        backoff_base = 2.0
+        
+        while retry_count < max_retries:
+            try:
+                # Add random delay between requests (1-3 seconds base + jitter)
+                if page > 1 or retry_count > 0:
+                    delay = pause_seconds + random.uniform(0.5, 2.0)
+                    time.sleep(delay)
+                
+                resp = sess.get(url_page, headers=headers, timeout=timeout)
+                resp.raise_for_status()
+                consecutive_failures = 0  # Reset on success
+                break
+            except requests.exceptions.RequestException as e:
+                retry_count += 1
+                consecutive_failures += 1
+                
+                if retry_count >= max_retries:
+                    print(f"Failed to fetch page {page} after {max_retries} retries: {e}")
+                    if consecutive_failures >= max_consecutive_failures:
+                        # Too many consecutive failures, stop scraping
+                        print(f"Stopping scrape due to {consecutive_failures} consecutive failures")
+                        return results
+                    break
+                
+                # Exponential backoff
+                backoff = backoff_base ** retry_count + random.uniform(0, 1)
+                print(f"Retry {retry_count}/{max_retries} for page {page}, waiting {backoff:.2f}s")
+                time.sleep(backoff)
+        else:
+            # Failed all retries, skip this page
+            continue
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Detect potential bot-block or unexpected page
+        if soup.select_one("form[action*='captcha']") or "Enter the characters you see" in resp.text:
+            print("Captcha detected, stopping scrape to avoid blocking")
+            break
+
+        review_divs = soup.select("div[data-hook='review']")
+        if not review_divs:
+            # If no reviews found on first page, either wrong domain/path or structure changed
+            if page == 1:
+                print(f"No reviews found on first page for URL {reviews_base}")
+                break
+            # If later pages have none, stop pagination
+            else:
+                print(f"No more reviews found on page {page}, ending pagination")
+                break
+
+        for div in review_divs:
+            # Reviewer name
+            reviewer = None
+            el = div.select_one("span.a-profile-name")
+            if el:
+                reviewer = el.get_text(strip=True)
+
+            # Rating
+            rating = None
+            star_el = div.select_one("i[data-hook='review-star-rating'] span") or div.select_one(
+                "i.a-icon-star-small span"
+            )
+            if star_el:
+                m = re.search(r"([0-9]+(?:\.[0-9]+)?)", star_el.get_text(strip=True))
+                if m:
+                    rating = m.group(1)
+
+            # Date
+            date = None
+            date_el = div.select_one("span[data-hook='review-date']")
+            if date_el:
+                date = date_el.get_text(strip=True)
+
+            # Title
+            title = None
+            title_el = div.select_one("a[data-hook='review-title'] span") or div.select_one(
+                "a[data-hook='review-title']"
+            )
+            if title_el:
+                title = title_el.get_text(strip=True)
+
+            # Body
+            body = None
+            body_el = div.select_one("span[data-hook='review-body'] span") or div.select_one(
+                "span[data-hook='review-body']"
+            )
+            if body_el:
+                body = body_el.get_text(" ", strip=True)
+
+            results.append(
+                {
+                    "reviewer": reviewer,
+                    "rating": rating,
+                    "date": date,
+                    "title": title,
+                    "body": body,
+                }
+            )
+
+            if len(results) >= max_reviews:
+                break
+
+        # Update progress based on reviews collected
+        if progress_cb and max_reviews > 0:
+            progress_pct = min(90, int((len(results) / max_reviews) * 80) + 10)
+            try:
+                progress_cb(progress_pct)
             except Exception:
                 pass
 
-            # extract metadata on first page
-            if idx == 1:
-                title_elem = soup.select_one('#productTitle') or soup.select_one('span#productTitle') or soup.select_one('h1.a-size-large')
-                raw_title = title_elem.get_text(strip=True) if title_elem else None
-                product_meta["name"] = _clean_product_name(raw_title) if raw_title else None
-
-                price_elem = soup.select_one('#priceblock_ourprice') or soup.select_one('#priceblock_dealprice') or soup.select_one('.a-price .a-offscreen')
-                raw_price = price_elem.get_text(strip=True) if price_elem else None
-                price_parsed = _parse_price_string(raw_price)
-                product_meta.update(price_parsed)
-
-            for block in review_blocks:
-                # multiple possible body/rating/date selectors
-                text_elem = (
-                    block.select_one('span[data-hook="review-body"]')
-                    or block.select_one('.review-text-content span')
-                    or block.select_one('.a-size-base.review-text')
-                )
-                rating_elem = (
-                    block.select_one('i[data-hook="review-star-rating"]')
-                    or block.select_one('.a-icon-alt')
-                    or block.select_one('i.a-icon.a-icon-star')
-                )
-                date_elem = (
-                    block.select_one('span[data-hook="review-date"]')
-                    or block.select_one('.review-date')
-                )
-
-                review_text = text_elem.get_text(strip=True) if text_elem else ""
-                rating = float(rating_elem.get_text(strip=True).split()[0]) if rating_elem else None
-                date_str = date_elem.get_text(strip=True) if date_elem else None
-
-                review_date = None
-                if date_str:
-                    if "on" in date_str:
-                        date_part = date_str.split("on")[-1].strip()
-                        try:
-                            review_date = parser.parse(date_part).date()
-                        except Exception:
-                            review_date = None
-
-                if review_text:
-                    cleaned = _clean_review_text(review_text)
-                    reviews.append(SingleReview(
-                        review_text=cleaned,
-                        rating=rating,
-                        review_date=review_date
-                    ))
-                    # stop if we've reached the requested max_reviews
-                    if max_reviews and len(reviews) >= max_reviews:
-                        if progress_cb:
-                            try:
-                                progress_cb(100)
-                            except Exception:
-                                pass
-                        return product_meta, reviews
-
-            # small delay between pages
-            time.sleep(random.uniform(1, 3))
-
-            # report intermediate progress based on pages
-            if progress_cb:
-                try:
-                    pct = int((idx / total_pages) * 100)
-                    progress_cb(min(99, pct))
-                except Exception:
-                    pass
-
-        except Exception as e:
-            print(f"Error scraping Amazon page {page}: {e}")
+        # Stop if we've reached the target
+        if len(results) >= max_reviews:
             break
 
-    return product_meta, reviews
+        # Next page
+        page += 1
+
+    return results
 
 
-# Flipkart Scraper
-def _parse_date_string(date_str: str):
-    """
-    Parse absolute and relative date strings into a datetime.date.
-    Handles strings like "8 months ago", "2 days ago", "Yesterday", and
-    normal absolute dates that dateutil.parser can handle.
-    Returns a datetime.date or None if parsing fails.
-    """
-    if not date_str:
-        return None
-    s = date_str.strip()
-    # Try absolute parsing first
-    try:
-        dt = parser.parse(s, fuzzy=True)
-        return dt.date()
-    except Exception:
-        pass
-
-    # Relative patterns like '8 months ago', 'a month ago', '2 days ago'
-    m = re.search(r"(?P<num>\d+|a|an)\s+(?P<unit>hour|hours|day|days|month|months|year|years)\s+ago", s, flags=re.I)
-    if m:
-        num = m.group("num")
-        num = 1 if num.lower() in ("a", "an") else int(num)
-        unit = m.group("unit").lower()
-        now = datetime.now()
-        if unit.startswith("hour"):
-            return (now - relativedelta(hours=num)).date()
-        if unit.startswith("day"):
-            return (now - relativedelta(days=num)).date()
-        if unit.startswith("month"):
-            return (now - relativedelta(months=num)).date()
-        if unit.startswith("year"):
-            return (now - relativedelta(years=num)).date()
-
-    # Common words
-    if re.search(r"\btoday\b", s, flags=re.I):
-        return date.today()
-    if re.search(r"\byesterday\b", s, flags=re.I):
-        return date.today() - relativedelta(days=1)
-
-    # If all else fails, return None so Pydantic sees null instead of invalid string
-    return None
-
-
-def _clean_product_name(raw: str) -> str:
-    """Heuristic to extract a concise product name from a long title."""
-    if not raw:
-        return ""
-    s = raw.strip()
-    for sep in ["---", "|", "—", "–", " - ", "(", "[", "\n"]:
-        if sep in s:
-            s = s.split(sep)[0].strip()
-    s = re.sub(r"\b\d{1,3}(?:\.\d+)?\s*(cm|inch|inches|mm)\b", "", s, flags=re.I).strip()
-    for kw in [" with ", " Edition", " HD", " HD Ready", " Smart", " Smart TV", " Display", " Series"]:
-        idx = s.lower().find(kw.strip().lower())
-        if idx != -1:
-            s = s[:idx].strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-
-def _parse_price_string(price_str: Optional[str]):
-    if not price_str:
-        return {"price": None, "price_value": None, "currency": None}
-    s = price_str.strip()
-    m = re.search(r"([₹$£€]|Rs\.?|INR)\s*([\d,]+(?:[\.\d]+)?)", s)
-    if m:
-        currency = m.group(1)
-        num = m.group(2)
-        try:
-            val = float(num.replace(",", ""))
-        except Exception:
-            val = None
-        return {"price": s, "price_value": val, "currency": currency}
-    m2 = re.search(r"([\d,]+(?:[\.\d]+)?)", s)
-    if m2:
-        num = m2.group(1)
-        try:
-            val = float(num.replace(",", ""))
-        except Exception:
-            val = None
-        return {"price": s, "price_value": val, "currency": None}
-    return {"price": s, "price_value": None, "currency": None}
-
-
-def _clean_review_text(text: Optional[str]) -> str:
-    """Normalize and clean extracted review text.
-
-    Removes common trailing fragments like 'Read more', ellipses, and extra whitespace.
-    Returns a stripped string.
-    """
-    if not text:
-        return ""
-    s = text.strip()
-    # Normalize whitespace
-    s = re.sub(r"\s+", " ", s)
-    # Remove trailing ellipses/Read more variants (case-insensitive). Handles '...Read more', '…Read more', 'Read more', etc.
-    s = re.sub(r"(?i)(?:\u2026|\.\.\.|…)?\s*read\s*more[\s»…]*$", "", s)
-    return s.strip()
-
-
-def scrape_flipkart_reviews(
+def _scrape_with_playwright(
     url: str,
-    max_pages: int = 3,
     *,
-    start_page: Optional[int] = None,
-    end_page: Optional[int] = None,
-    max_reviews: Optional[int] = None,
+    max_reviews: int = 300,
+    pause_seconds: float = 1.5,
     progress_cb: Optional[Callable[[int], None]] = None,
-) -> tuple:
+    cancel_cb: Optional[Callable[[], None]] = None,
+) -> List[Dict[str, Optional[str]]]:
+    """Fallback scraper that uses Playwright to render pages when static
+    requests fail (CAPTCHA, heavy JS, or different layout). Playwright is
+    optional — this function will raise ImportError if it's not installed.
     """
-    Scrape reviews from a Flipkart product page.
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        raise ImportError("Playwright is not installed or available") from e
 
-    Args:
-        url (str): The URL of the Flipkart product page.
-        max_pages (int): Maximum number of review pages to scrape.
+    results: List[Dict[str, Optional[str]]] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(user_agent=random.choice(USER_AGENTS))
+        page = context.new_page()
 
-    Returns:
-        List[SingleReview]: A list of scraped reviews.
-    """
-    reviews: List[SingleReview] = []
-    print(f"Starting scrape for URL: {url}")
-
-    # Determine page range: prefer explicit start/end if provided; else use max_pages from page 1
-    s_page = start_page if start_page is not None else 1
-    e_page = end_page if end_page is not None else (max_pages if max_pages is not None else 1)
-    if e_page < s_page:
-        e_page = s_page
-
-    # If max_reviews is supplied, we don't strictly need to know total pages; we'll stop when we reach the target
-    total_pages = max(1, e_page - s_page + 1)
-
-    product_meta = {"name": None, "price": None, "price_value": None, "currency": None}
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url, timeout=60000)
-
-        # Attempt to extract product title and price from the main product page.
+        # If given a product URL, attempt to follow the reviews link same as
+        # the requests-based finder; otherwise use the URL directly.
         try:
-            initial_html = page.content()
-            initial_soup = BeautifulSoup(initial_html, "html.parser")
+            page.goto(url, timeout=30000)
+        except Exception:
+            # give up early
+            browser.close()
+            return results
 
-            # 1) Common DOM selectors for product title
-            title_elem = (
-                initial_soup.select_one('span.B_NuCI')
-                or initial_soup.select_one('span._35KyD6')
-                or initial_soup.select_one('h1._2-cx7L')
-                or initial_soup.select_one('title')
-            )
-            raw_title = title_elem.get_text(strip=True) if title_elem else None
-            if raw_title:
-                product_meta["name"] = _clean_product_name(raw_title)
-
-            # 2) JSON-LD structured data
-            if not product_meta.get("name") or not product_meta.get("price"):
-                ld = initial_soup.find('script', type='application/ld+json')
-                if ld and ld.string:
+        # Try to click the 'see all reviews' link if present
+        try:
+            # Several selectors — try them in order
+            selectors = [
+                "a[data-hook='see-all-reviews-link-foot']",
+                "a[data-hook='see-all-reviews-link']",
+                "a[href*='/product-reviews/']",
+            ]
+            reviews_href = None
+            for sel in selectors:
+                el = page.query_selector(sel)
+                if el:
                     try:
-                        import json as _json
-                        data = _json.loads(ld.string)
-                        if isinstance(data, list) and data:
-                            data = data[0]
-                        if isinstance(data, dict):
-                            nm = data.get('name')
-                            if nm and not product_meta.get("name"):
-                                product_meta["name"] = _clean_product_name(nm)
-                            offers = data.get('offers')
-                            if isinstance(offers, dict):
-                                price = offers.get('price')
-                                curr = offers.get('priceCurrency')
-                                if price and not product_meta.get("price"):
-                                    try:
-                                        pv = float(str(price).replace(',', ''))
-                                    except Exception:
-                                        pv = None
-                                    product_meta.update({"price": str(price), "price_value": pv, "currency": curr})
+                        el.click()
+                        page.wait_for_load_state('networkidle', timeout=10000)
+                        break
                     except Exception:
-                        pass
-
-            # 3) Meta/OG tags for title and price
-            if not product_meta.get("name"):
-                og_title = initial_soup.select_one('meta[property="og:title"]') or initial_soup.select_one('meta[name="title"]')
-                if og_title and og_title.get('content'):
-                    product_meta["name"] = _clean_product_name(og_title.get('content'))
-
-            if not product_meta.get("price"):
-                price_elem = initial_soup.select_one('div._30jeq3._16Jk6d') or initial_soup.select_one('div._30jeq3')
-                raw_price = price_elem.get_text(strip=True) if price_elem else None
-                if raw_price:
-                    product_meta.update(_parse_price_string(raw_price))
-                else:
-                    og_price = initial_soup.select_one('meta[property="product:price:amount"]')
-                    if og_price and og_price.get('content'):
-                        product_meta.update(_parse_price_string(og_price.get('content')))
-
-            # 4) If meta still missing and we're on a reviews page, visit canonical product URL
-            if (not product_meta.get("name") or not product_meta.get("price")) and "product-reviews" in page.url:
-                canon = initial_soup.select_one('link[rel="canonical"]')
-                canon_href = canon.get('href') if canon else None
-                try:
-                    if canon_href:
-                        prod_url = canon_href if canon_href.startswith('http') else urljoin(page.url, canon_href)
-                        page.goto(prod_url, timeout=15000)
-                        page.wait_for_load_state("networkidle", timeout=10000)
-                        prod_html = page.content()
-                        prod_soup = BeautifulSoup(prod_html, "html.parser")
-                        t2 = (
-                            prod_soup.select_one('span.B_NuCI')
-                            or prod_soup.select_one('span._35KyD6')
-                            or prod_soup.select_one('h1._2-cx7L')
-                            or prod_soup.select_one('title')
-                        )
-                        rt2 = t2.get_text(strip=True) if t2 else None
-                        if rt2 and not product_meta.get("name"):
-                            product_meta["name"] = _clean_product_name(rt2)
-                        p2 = prod_soup.select_one('div._30jeq3._16Jk6d') or prod_soup.select_one('div._30jeq3')
-                        rp2 = p2.get_text(strip=True) if p2 else None
-                        if rp2 and not product_meta.get("price"):
-                            product_meta.update(_parse_price_string(rp2))
-                        # Go back to reviews base later when we compute it
-                except Exception:
-                    pass
+                        href = el.get_attribute('href')
+                        if href:
+                            reviews_href = href
+                            break
+            if reviews_href:
+                # build absolute
+                parsed = urlparse(url)
+                if not reviews_href.startswith('http'):
+                    reviews_href = f"{parsed.scheme}://{parsed.netloc}{reviews_href}"
+                page.goto(reviews_href, timeout=30000)
         except Exception:
             pass
 
-        # If the current URL doesn't have "product-reviews", try to navigate to the reviews page
-        reviews_base_url = None
-        if "product-reviews" not in page.url:
-            print("Not on a reviews page, trying to navigate...")
-            try:
-                all_reviews_link = page.locator('a:has-text("All reviews")').first
-                if all_reviews_link.count() > 0:
-                    href = all_reviews_link.get_attribute('href')
-                    if href:
-                        reviews_base_url = href if href.startswith('http') else urljoin(page.url, href)
-                        page.goto(reviews_base_url, timeout=10000)
-                        page.wait_for_url("**/product-reviews/**", timeout=10000)
-                        print(f"Navigated to reviews page: {page.url}")
-                else:
-                    read_all_reviews_span = page.locator("div > span:has-text('All Reviews')").first
-                    if read_all_reviews_span.count() > 0:
-                        read_all_reviews_span.click()
-                        page.wait_for_url("**/product-reviews/**", timeout=10000)
-                        reviews_base_url = page.url
-                        print(f"Navigated to reviews page: {page.url}")
-            except Exception as e:
-                print(f"Could not automatically navigate to 'All reviews' page: {e}")
-        else:
-            reviews_base_url = page.url
+        page_num = 1
+        while len(results) < max_reviews:
+            if cancel_cb:
+                try:
+                    cancel_cb()
+                except Exception:
+                    raise
 
-        # Normalize base reviews URL by stripping query parameters
-        if reviews_base_url and ("?" in reviews_base_url):
-            reviews_base_url = reviews_base_url.split('?')[0]
-        if not reviews_base_url:
-            reviews_base_url = page.url
-
-        next_url = None
-        page_num = s_page
-        idx = 0
-        while True:
-            idx += 1
-            print(f"Scraping page {page_num}...")
-            # Navigate to the appropriate page: first iteration use base, then use discovered next_url
-            try:
-                if page_num == s_page and idx == 1:
-                    page.goto(reviews_base_url, timeout=20000)
-                elif next_url:
-                    page.goto(next_url, timeout=20000)
-                else:
-                    # fallback: append page param
-                    fallback = reviews_base_url + ("&" if "?" in reviews_base_url else "?") + f"page={page_num}"
-                    page.goto(fallback, timeout=20000)
-                page.wait_for_load_state("networkidle", timeout=10000)
-            except Exception:
-                pass
-
-            # Try to ensure content is loaded
-            try:
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                time.sleep(2)
-            except Exception:
-                pass
+            # Wait a short, jittered amount to mimic a human
+            time.sleep(pause_seconds + random.uniform(0.3, 1.0))
 
             html = page.content()
-            soup = BeautifulSoup(html, "html.parser")
-            # Try multiple possible review card selectors (Flipkart changes classes)
-            review_blocks = soup.select("div.RcXBOT, div._27M-vq, div.col.EYb05o, div._1AtVbE")
-            if not review_blocks:
-                print(f"No review blocks found on page {page_num}.")
+            soup = BeautifulSoup(html, 'html.parser')
+            # Reuse the same selectors as the requests path
+            review_divs = soup.select("div[data-hook='review']")
+            if not review_divs:
+                # If nothing, try alternate selectors
+                review_divs = soup.select("li[data-hook='review']") or soup.select("div[id^='customer_review-']")
+            if not review_divs:
                 break
 
-            for block in review_blocks:
-                rating_elem = block.select_one("div.XQDdHH") or block.select_one("div._3LWZlK")
-                text_elem = (
-                    block.select_one("div.ZmyHeo > div > div")
-                    or block.select_one("div.t-ZTKy > div > div")
-                    or block.select_one("div.t-ZTKy")
-                )
-                date_elems = block.select("p._2NsDsF") or block.select("p._2sc7ZR")
-                date_elem = date_elems[-1] if date_elems else None
+            for div in review_divs:
+                reviewer = None
+                el = div.select_one("span.a-profile-name")
+                if el:
+                    reviewer = el.get_text(strip=True)
 
-                review_text = text_elem.get_text(strip=True) if text_elem else ""
-                if not review_text:
-                    continue
+                rating = None
+                star_el = div.select_one("i[data-hook='review-star-rating'] span") or div.select_one("i.a-icon-star-small span")
+                if star_el:
+                    m = re.search(r"([0-9]+(?:\.[0-9]+)?)", star_el.get_text(strip=True))
+                    if m:
+                        rating = m.group(1)
 
-                rating = float(rating_elem.get_text(strip=True)) if rating_elem else None
-                date_str = date_elem.get_text(strip=True) if date_elem else None
+                date = None
+                date_el = div.select_one("span[data-hook='review-date']")
+                if date_el:
+                    date = date_el.get_text(strip=True)
 
-                review_date = _parse_date_string(date_str)
+                title = None
+                title_el = div.select_one("a[data-hook='review-title'] span") or div.select_one("a[data-hook='review-title']")
+                if title_el:
+                    title = title_el.get_text(strip=True)
 
-                cleaned = _clean_review_text(review_text)
-                reviews.append(SingleReview(
-                    review_text=cleaned,
-                    rating=rating,
-                    review_date=review_date
-                ))
+                body = None
+                body_el = div.select_one("span[data-hook='review-body'] span") or div.select_one("span[data-hook='review-body']")
+                if body_el:
+                    body = body_el.get_text(" ", strip=True)
 
-                if max_reviews and len(reviews) >= max_reviews:
-                    if progress_cb:
-                        try:
-                            progress_cb(100)
-                        except Exception:
-                            pass
-                    print(f"Reached target of {max_reviews} reviews. Stopping.")
-                    try:
-                        browser.close()
-                    except Exception:
-                        pass
-                    return product_meta, reviews
+                results.append({"reviewer": reviewer, "rating": rating, "date": date, "title": title, "body": body})
+                if len(results) >= max_reviews:
+                    break
 
-            # Determine next page URL by scanning anchors that contain product-reviews and a page parameter
+            # Try to navigate to next page using the standard pageNumber param
             try:
-                anchors = soup.find_all('a', href=True)
-                candidates = []
-                for a in anchors:
-                    href = a.get('href')
-                    if not href or 'product-reviews' not in href:
-                        continue
-                    abs_href = urljoin(page.url, href)
-                    qs = parse_qs(urlparse(abs_href).query)
-                    if 'page' in qs and qs['page']:
-                        try:
-                            pnum = int(qs['page'][0])
-                            candidates.append((pnum, abs_href))
-                        except Exception:
-                            continue
-                target = [(p, u) for (p, u) in candidates if p == page_num + 1]
-                if target:
-                    next_url = target[0][1]
-                else:
-                    higher = [t for t in candidates if t[0] > page_num]
-                    next_url = min(higher, default=(None, None))[1] if higher else None
+                page_num += 1
+                parsed = urlparse(page.url)
+                next_q = f"reviewerType=all_reviews&sortBy=recent&pageNumber={page_num}"
+                next_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{next_q}"
+                page.goto(next_url, timeout=30000)
             except Exception:
-                next_url = None
-
-            # progress
-            if progress_cb:
-                try:
-                    if max_reviews:
-                        pct = int((len(reviews) / max_reviews) * 100)
-                        pct = min(99, pct)
-                    else:
-                        pct = int((idx / total_pages) * 100)
-                        pct = min(99, pct)
-                    progress_cb(pct)
-                except Exception:
-                    pass
-
-            # Decide to continue or stop
-            if page_num >= e_page or not next_url:
                 break
-            page_num += 1
 
         try:
             browser.close()
         except Exception:
             pass
 
-    print(f"Scraping complete. Found {len(reviews)} reviews.")
-    return product_meta, reviews
+    return results
 
 
-# Generic Scraper
-def scrape_reviews(url: str, max_pages: int = 2, *, max_reviews: Optional[int] = None, progress_cb: Optional[Callable[[int], None]] = None) -> tuple:
+def scrape_amazon_reviews(
+    url: str,
+    max_pages: int = 2,
+    *,
+    max_reviews: Optional[int] = None,
+    progress_cb: Optional[Callable[[int], None]] = None,
+    cancel_cb: Optional[Callable[[], None]] = None,
+) -> Tuple[Dict[str, Any], List[SingleReview]]:
+    """Fetch Amazon reviews using the manual HTML scraper.
+
+    Args:
+        url: Amazon product URL
+        max_reviews: Maximum number of reviews to fetch (default from env, capped at 300)
+        progress_cb: Optional callback for progress updates
+        cancel_cb: Optional callback to check for cancellation
+
+    Returns:
+        Tuple of (product_metadata, reviews_list)
+
+    Raises:
+        ValueError: If no ASIN found in URL or no reviews found
     """
-    Generic function to scrape reviews based on the product 
-    URL (Amazon or Flipkart).
-    """
-    if "amazon" in url:
-        return scrape_amazon_reviews(url, max_pages, max_reviews=max_reviews, progress_cb=progress_cb)
-    elif "flipkart" in url:
-        return scrape_flipkart_reviews(url, max_pages, max_reviews=max_reviews, progress_cb=progress_cb)
+    # We accept a product or reviews URL directly. The internal raw scraper will
+    # follow the URL to the reviews section when necessary.
+    # Get max_reviews from env if not specified, cap at 300
+    if max_reviews is None:
+        try:
+            max_reviews = int(os.getenv("SCRAPER_MAX_REVIEWS", "300"))
+        except Exception:
+            max_reviews = 300
+    
+    # Hard cap at 300 reviews per scrape
+    max_reviews = min(int(max_reviews), 300)
+    
+    print(f"Fetching Amazon reviews for URL: {url} (max: {max_reviews})")
+    
+    # Report initial progress
+    if progress_cb:
+        try:
+            progress_cb(5)
+        except Exception:
+            pass
+    
+    # Check for cancellation
+    if cancel_cb:
+        try:
+            cancel_cb()
+        except Exception:
+            raise
+    
+    # Scrape reviews using internal raw scraper
+    product_meta = {}
+    reviews_raw = []
+    try:
+        reviews_raw = _scrape_amazon_reviews_raw(
+            url,
+            max_reviews=max_reviews,
+            pause_seconds=1.5,  # Increased delay to avoid IP blocking
+            progress_cb=progress_cb,
+            cancel_cb=cancel_cb,
+        )
+    except Exception as e:
+        print(f"Scraper failed: {e}")
+        raise
+
+    # If the requests-based scraper returned nothing (or hit a captcha), try
+    # a Playwright-based renderer when available. Playwright is optional.
+    if not reviews_raw:
+        try:
+            try:
+                reviews_raw = _scrape_with_playwright(
+                    url,
+                    max_reviews=max_reviews,
+                    pause_seconds=1.5,
+                    progress_cb=progress_cb,
+                    cancel_cb=cancel_cb,
+                )
+                print(f"Playwright fallback fetched {len(reviews_raw)} reviews")
+            except ImportError:
+                print("Playwright not available; skipping rendered fallback")
+        except Exception as ex:
+            print(f"Playwright fallback failed: {ex}")
+    
+    # Convert to SingleReview objects
+    reviews_list = []
+    for review_data in reviews_raw:
+        if cancel_cb:
+            try:
+                cancel_cb()
+            except Exception:
+                raise
+        
+        # Extract text from body or title
+        text = (review_data.get("body") or review_data.get("title") or "").strip()
+        
+        # Parse rating
+        rating_val = None
+        rraw = review_data.get("rating")
+        try:
+            if isinstance(rraw, (int, float)):
+                rating_val = float(rraw)
+            elif isinstance(rraw, str):
+                rating_val = float(rraw.split()[0])
+        except Exception:
+            rating_val = None
+        
+        reviews_list.append(SingleReview(
+            review_text=text,
+            rating=rating_val,
+            review_date=review_data.get("date"),
+        ))
+
+    if len(reviews_list) == 0:
+        # Signal failure upstream so the worker marks the task as FAILURE
+        raise ValueError(
+            "No reviews found. Possible causes: invalid/unsupported URL, reviews hidden behind CAPTCHA, or locale-specific page layout."
+        )
     else:
-        raise ValueError("Currently only supports Amazon and Flipkart URLs")
+        print(f"Successfully fetched {len(reviews_list)} Amazon reviews")
+    
+    if progress_cb:
+        try:
+            progress_cb(100)
+        except Exception:
+            pass
+    
+    return product_meta, reviews_list
+
+
+
+
+
+def scrape_reviews(
+    url: str,
+    max_pages: int = 2,
+    *,
+    max_reviews: Optional[int] = None,
+    progress_cb: Optional[Callable[[int], None]] = None,
+    cancel_cb: Optional[Callable[[], None]] = None,
+) -> Tuple[Dict[str, Any], List[SingleReview]]:
+    """Generic function to scrape reviews based on the product URL.
+
+    Supports Amazon only via the built-in manual scraper.
+    Limited to 300 reviews per scrape to avoid IP blocking.
+
+    Args:
+        url: Product URL (Amazon)
+        max_pages: Ignored (pagination handled by the scraper)
+        max_reviews: Maximum number of reviews to fetch (capped at 300)
+        progress_cb: Optional callback for progress updates
+        cancel_cb: Optional callback to check for cancellation
+
+    Returns:
+        Tuple of (product_metadata, reviews_list)
+
+    Raises:
+        ValueError: If URL is not supported
+    """
+    # Get max_reviews from env if not specified, cap at 300
+    if max_reviews is None:
+        try:
+            max_reviews = int(os.getenv("SCRAPER_MAX_REVIEWS", "300"))
+        except Exception:
+            max_reviews = 300
+    
+    # Hard cap at 300 reviews per scrape
+    max_reviews = min(int(max_reviews), 300)
+    
+    url_lower = url.lower()
+
+    if "amazon" in url_lower:
+        return scrape_amazon_reviews(
+            url,
+            max_pages,
+            max_reviews=max_reviews,
+            progress_cb=progress_cb,
+            cancel_cb=cancel_cb
+        )
+    else:
+        raise ValueError(
+            f"Unsupported URL: {url}. "
+            f"Currently supported platform: Amazon. "
+            f"Please provide a valid Amazon product URL."
+        )
+
+
+def scrapeAmazon(productUrl: str, **kwargs):
+    """Alias for scrape_amazon_reviews (backward compatibility)."""
+    return scrape_amazon_reviews(productUrl, **kwargs)

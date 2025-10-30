@@ -5,6 +5,7 @@ import { useState, useRef } from "react";
 import { NavLink } from "react-router-dom";
 // SiteHeader is now rendered at app root
 import { isAuthenticated } from "@/lib/auth";
+import { useToast } from "@/hooks/useToast";
 
 interface HomePageProps {
   onAnalyze: (url: string) => void;
@@ -23,11 +24,25 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
   const [url, setUrl] = useState("");
   const [ripples, setRipples] = useState<RippleType[]>([]);
   const rippleIdRef = useRef(0);
+  const { warning, info } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Directly trigger analyze with provided URL (no overlay component)
-    onAnalyze(url || "https://example.com/product");
+    // Validate input before calling the parent analyzer.
+    const trimmed = url.trim();
+    if (!trimmed) {
+      warning("Please add an Amazon product URL.");
+      return;
+    }
+
+    // Basic Amazon host check
+    if (!trimmed.toLowerCase().includes("amazon")) {
+      info("Only Amazon product URLs are supported. Please paste a valid Amazon product link.");
+      return;
+    }
+
+    // Trigger analyze with the provided URL
+    onAnalyze(trimmed);
   };
 
   const createRipple = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -241,7 +256,7 @@ export function HomePage({ onAnalyze, onGetStarted, onThemeToggle, isDark }: Hom
                       type="url"
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
-                      placeholder="Paste a product link (Amazon, Flipkart, etc.)"
+                      placeholder="Paste an Amazon product link (e.g., amazon.in/dp/...)"
                       className="w-full px-6 py-4 bg-transparent focus:outline-none transition-all duration-300 placeholder:text-sm"
                       style={{ 
                         fontFamily: "Inter, sans-serif",

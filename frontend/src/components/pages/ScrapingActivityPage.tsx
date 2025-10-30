@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
-import { Sun, Moon, User, X, Trash2, Eye } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+import { useState, useEffect, useRef } from "react";
+import { X, Trash2, Eye } from "lucide-react";
 import { ProgressRing } from "@/components/utils/ProgressRing";
+import { useToast } from "@/hooks/useToast";
+import { apiScrapeStatus, apiCancelScrape, apiStartScrape, apiLockStatus, type ScrapeStatusResponse } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
 
 
 interface ScrapeJob {
@@ -22,95 +23,186 @@ interface ScrapingActivityPageProps {
 }
 
 export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: ScrapingActivityPageProps) {
-  const [productLink, setProductLink] = useState("");
-  const [activeJob, setActiveJob] = useState<ScrapeJob>({
-    id: "125A-01",
-    productName: "Sony WH-1000XM5 Wireless Headphones",
-    productLink: "https://amazon.com/sony-wh1000xm5",
-    status: "processing",
-    Progress: 75,
-    statusText: "Analyzing sentiments...",
-    dateStarted: "23-Oct-2025",
-  });
-  const [queuedJobs, setQueuedJobs] = useState<ScrapeJob[]>([
-    {
-      id: "125A-02",
-      productName: "Apple AirPods Pro (2nd Gen)",
-      productLink: "https://amazon.com/airpods-pro",
-      status: "queued",
-      queuePosition: 1,
-    },
-    {
-      id: "125A-03",
-      productName: "Bose QuietComfort 45 Headphones",
-      productLink: "https://flipkart.com/bose-qc45",
-      status: "queued",
-      queuePosition: 2,
-    },
-  ]);
-  const [completedJobs, setCompletedJobs] = useState<ScrapeJob[]>([
-    {
-      id: "125A-04",
-      productName: "Sennheiser HD 650 Headphones",
-      productLink: "https://example.com/hd650",
-      status: "completed",
-    },
-    {
-      id: "125A-05",
-      productName: "JBL Live 660NC",
-      productLink: "https://example.com/jbl-660nc",
-      status: "completed",
-    },
-  ]);
+  const { info, success, warning } = useToast();
+  const navigate = useNavigate();
+  const [activeJob, setActiveJob] = useState<ScrapeJob | null>(null);
+  const [queuedJobs, setQueuedJobs] = useState<ScrapeJob[]>([]);
+  const [completedJobs, setCompletedJobs] = useState<ScrapeJob[]>([]);
   const [activeTab, setActiveTab] = useState<"scraping" | "home" | "history">("scraping");
+  const startNextTimer = useRef<number | null>(null);
 
   // theme state is controlled by parent via props (isDark, onThemeToggle)
 
-  const handleQueueAnalysis = () => {
-    if (!productLink.trim()) return;
-
-    const newJob: ScrapeJob = {
-      id: `125A-${String(Date.now()).slice(-2)}`,
-      productName: productLink.includes("amazon") ? "Amazon Product" : productLink.includes("flipkart") ? "Flipkart Product" : "Product",
-      productLink: productLink,
-      status: "queued",
-      queuePosition: queuedJobs.length + 1,
-    };
-
-    setQueuedJobs([...queuedJobs, newJob]);
-    setProductLink("");
+  // Queue helpers
+  const readQueue = (): Array<{ id: string; url: string; productName: string; productLink: string; addedAt: number }> => {
+    try { return JSON.parse(localStorage.getItem("revu:scrapeQueue") || "[]"); } catch { return []; }
+  };
+  const writeQueue = (q: any[]) => localStorage.setItem("revu:scrapeQueue", JSON.stringify(q));
+  const loadQueued = () => {
+    const q = readQueue();
+    const mapped: ScrapeJob[] = q.map((x, i) => ({ id: x.id, productName: x.productName, productLink: x.productLink, status: "queued", queuePosition: i + 1 }));
+    setQueuedJobs(mapped);
   };
 
-  const cancelCurrentProcess = () => {
-    // Move to next queued job if available
-    if (queuedJobs.length > 0) {
-      const nextJob = {
-        ...queuedJobs[0],
-        status: "processing" as const,
-        progress: 0,
-        statusText: "Fetching data...",
-        dateStarted: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-      };
-      setActiveJob(nextJob);
-      setQueuedJobs(queuedJobs.slice(1).map((job, index) => ({
-        ...job,
-        queuePosition: index + 1,
-      })));
-    } else {
-      // No more jobs in queue
-      setActiveJob(null as any);
+  // Start next queued scrape after a brief pause and when lock is free
+  const startNextIfPossible = async (delayMs = 8000) => {
+    if (startNextTimer.current) return; // avoid multiple timers
+    if (activeJob) return;
+    const q = readQueue();
+    if (q.length === 0) return;
+    startNextTimer.current = window.setTimeout(async () => {
+      startNextTimer.current = null;
+      // wait until lock is released
+      for (let tries = 0; tries < 20; tries++) {
+        const lock = await apiLockStatus();
+        if (!lock.locked) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      const next = readQueue()[0];
+      if (!next) return; // queue might have changed
+      try {
+        const { job_id } = await apiStartScrape({ url: next.url });
+        // persist active job info
+        localStorage.setItem("revu:lastJobId", String(job_id));
+        localStorage.setItem("revu:lastURL", next.url);
+        // set optimistic active job card
+        const started = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+        setActiveJob({ id: job_id, productName: next.productName, productLink: next.productLink, status: "processing", Progress: 0, statusText: "Queued", dateStarted: started });
+        // remove from queue
+        const rest = readQueue().slice(1);
+        writeQueue(rest);
+        loadQueued();
+        info("Starting next queued scrape...");
+      } catch (e: any) {
+        warning(e?.message || "Failed to start next scrape. Will retry shortly.");
+        // Try again later
+        startNextIfPossible(10000);
+      }
+    }, delayMs) as unknown as number;
+  };
+
+  // Seed from last started job, load queue, and begin polling
+  useEffect(() => {
+    loadQueued();
+    const lastJobId = localStorage.getItem("revu:lastJobId");
+    const lastURL = localStorage.getItem("revu:lastURL") || "";
+    if (!lastJobId) {
+      // No active job; if queue exists, attempt to start immediately (after lock clears)
+      startNextIfPossible(500);
+      return;
+    }
+
+    // Initialize an active job placeholder so UI shows immediately
+    if (!activeJob) {
+      const started = new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      setActiveJob({
+        id: lastJobId,
+        productName: lastURL ? new URL(lastURL).hostname : "Product",
+        productLink: lastURL,
+        status: "processing",
+        Progress: 0,
+        statusText: "Queued",
+        dateStarted: started,
+      });
+    }
+
+    let cancelled = false;
+    let interval: any;
+
+    const poll = async () => {
+      try {
+        const res: ScrapeStatusResponse = await apiScrapeStatus(lastJobId);
+        if (cancelled) return;
+        const state = (res.state || "").toUpperCase();
+        if (state === "PROGRESS") {
+          setActiveJob((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  Progress: Math.max(0, Math.min(100, Number(res.progress ?? 0))),
+                  statusText: "Processing...",
+                }
+              : prev
+          );
+        } else if (state === "PENDING") {
+          setActiveJob((prev) => (prev ? { ...prev, Progress: 0, statusText: "Queued" } : prev));
+        } else if (state === "SUCCESS") {
+          setCompletedJobs((list) => {
+            // Add completed job summary
+            const done: ScrapeJob = {
+              id: res.job_id,
+              productName:
+                (res.product && (res.product.name || res.product.title)) ||
+                (activeJob?.productName || "Product"),
+              productLink: activeJob?.productLink || "",
+              status: "completed",
+            };
+            return [done, ...list];
+          });
+          setActiveJob(null);
+          success("Scrape completed.");
+          // clear lastJobId so page doesn't keep polling a finished job
+          localStorage.removeItem("revu:lastJobId");
+          clearInterval(interval);
+          // After a short pause, start next from queue if any
+          startNextIfPossible(8000);
+        } else if (state === "FAILURE" || state === "REVOKED") {
+          const cancelled = state === "REVOKED" || (String(res.error || "").toLowerCase().includes("cancel"));
+          info(cancelled ? "Scrape was cancelled." : "Scrape failed.");
+          setActiveJob(null);
+          localStorage.removeItem("revu:lastJobId");
+          clearInterval(interval);
+          // If there is a queue, try to start next after a pause
+          startNextIfPossible(8000);
+        }
+      } catch (e: any) {
+        info(e?.message || "Unable to fetch scrape status.");
+      }
+    };
+
+    // initial poll immediately
+    poll();
+    // then interval
+    interval = setInterval(poll, 3000);
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cancelCurrentProcess = async () => {
+    if (!activeJob) return;
+    try {
+      await apiCancelScrape(activeJob.id);
+      info("Cancel requested. Finishing current step...");
+      // We keep the job displayed while backend revokes it; polling loop will
+      // detect REVOKED and clear UI accordingly.
+      setActiveJob((prev) => (prev ? { ...prev, statusText: "Cancelling..." } : prev));
+    } catch (e: any) {
+      info(e?.message || "Failed to cancel job");
     }
   };
 
   const removeFromQueue = (id: string) => {
-    const updatedQueue = queuedJobs
-      .filter(job => job.id !== id)
-      .map((job, index) => ({
-        ...job,
-        queuePosition: index + 1,
-      }));
-    setQueuedJobs(updatedQueue);
+    const q = readQueue().filter((x) => x.id !== id);
+    writeQueue(q);
+    loadQueued();
   };
+
+  // Keep queue UI in sync if other parts of the app modify localStorage
+  useEffect(() => {
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === "revu:scrapeQueue") loadQueued();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   // derive a human-friendly status and color classes from progress percentage
   const getStatusFromProgress = (p?: number) => {
@@ -302,7 +394,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                                   Current Status
                                 </p>
                                 <p className={`${status.textClass}`} style={{ fontSize: "15px", fontWeight: 600 }}>
-                                  {status.label}
+                                  {activeJob.statusText || status.label}
                                 </p>
                               </div>
                             </div>
@@ -434,7 +526,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                                     <div className={`w-1.5 h-1.5 rounded-full ${status.dotClass}`} />
                                   )}
                                   <span className={`${status.textClass}`} style={{ fontSize: "13px", fontWeight: 600 }}>
-                                    {status.label}
+                                    {activeJob.statusText || status.label}
                                   </span>
                                 </div>
                               );
@@ -675,6 +767,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                               <button
                                 className="p-2.5 hover:bg-gray-100 dark:hover:bg-zinc-900 rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-white/10 group-hover:scale-110"
                                 title="View details"
+                                onClick={() => navigate("/dashboard")}
                               >
                                 <Eye className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                               </button>

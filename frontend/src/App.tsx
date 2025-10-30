@@ -1,22 +1,23 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { HomePage } from "@/components/Pages/HomePage";
-import { SiteHeader } from "@/components/utils/SiteHeader";
-import { DashboardPage } from "@/components/Pages/DashboardPage";
-import { AuthPage } from "@/components/Pages/AuthPage";
-import { ProfilePage } from "@/components/Pages/ProfilePage";
-import { ScrapingActivityPage } from "@/components/Pages/ScrapingActivityPage";
-import { HistoryPage } from "@/components/Pages/HistoryPage";
-import { ProtectedRoute } from "@/components/utils/ProtectedRoute";
-import { clearAuth, isAuthenticated } from "@/lib/auth";
-import { Toaster } from "@/components/ui/sonner";
-import { useToast } from "@/hooks/useToast";
-import { Footer } from "@/components/utils/Footer";
+import { HomePage } from "./components/Pages/HomePage.tsx";
+import { SiteHeader } from "./components/utils/SiteHeader.tsx";
+import { DashboardPage } from "./components/Pages/DashboardPage.tsx";
+import { AuthPage } from "./components/Pages/AuthPage.tsx";
+import { ProfilePage } from "./components/Pages/ProfilePage.tsx";
+import { ScrapingActivityPage } from "./components/Pages/ScrapingActivityPage.tsx";
+import { HistoryPage } from "./components/Pages/HistoryPage.tsx";
+import { ProtectedRoute } from "./components/utils/ProtectedRoute.tsx";
+import { clearAuth, isAuthenticated } from "./lib/auth.ts";
+import { apiStartScrape, apiLockStatus } from "./lib/api.ts";
+import { Toaster } from "./components/ui/sonner.tsx";
+import { useToast } from "./hooks/useToast.tsx";
+import { Footer } from "./components/utils/Footer.tsx";
 
 export default function App() {
   const [isDark, setIsDark] = useState(false);
   const navigate = useNavigate();
-  const { info, success } = useToast();
+  const { info, success, warning } = useToast();
   const [auth, setAuth] = useState<boolean>(isAuthenticated());
 
   // Listen for auth changes triggered by saveAuth/clearAuth
@@ -32,14 +33,86 @@ export default function App() {
     else document.documentElement.classList.remove("dark");
   }, [isDark]);
 
-  const handleAnalyze = (_url: string) => {
+  // Simple queue persistence helpers shared from App -> Activity page via localStorage
+  const readQueue = (): Array<{ id: string; url: string; productName: string; productLink: string; addedAt: number }> => {
+    try {
+      return JSON.parse(localStorage.getItem("revu:scrapeQueue") || "[]");
+    } catch {
+      return [];
+    }
+  };
+  const writeQueue = (q: any[]) => localStorage.setItem("revu:scrapeQueue", JSON.stringify(q));
+
+  const enqueue = (url: string) => {
+    const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const productName = (() => {
+      try { return new URL(url).hostname; } catch { return "Product"; }
+    })();
+    const job = { id, url, productName, productLink: url, addedAt: Date.now() };
+    const q = readQueue();
+    q.push(job);
+    writeQueue(q);
+    return { job, position: q.length };
+  };
+
+  const handleAnalyze = async (_url: string) => {
     if (!isAuthenticated()) {
       info("Please log in to continue analyzing reviews.");
       const redirect = encodeURIComponent("/scraping-activity");
       navigate(`/auth/login?redirect=${redirect}`);
       return;
     }
-    navigate("/scraping-activity");
+    if (!_url || !_url.startsWith("http")) {
+      // Prefer a warning for missing/invalid URL so it stands out.
+      warning("Please add an Amazon product URL.");
+      return;
+    }
+    
+    // Validate URL contains an Amazon product link
+    const urlLower = _url.toLowerCase();
+    const isAmazon = urlLower.includes("amazon");
+
+    if (!isAmazon) {
+      warning("⚠️ Only Amazon product URLs are supported. Please paste a valid Amazon product link.");
+      return;
+    }
+    
+    try {
+      // If a scrape is already running, queue it instead of erroring out
+      const lock = await apiLockStatus();
+      if (lock.locked) {
+        const { position } = enqueue(_url);
+        warning(`A scraping job is already in progress. Added to queue (position ${position}).`);
+        navigate("/scraping-activity");
+        return;
+      }
+
+      const { job_id } = await apiStartScrape({ url: _url });
+      localStorage.setItem("revu:lastJobId", job_id);
+      localStorage.setItem("revu:lastURL", _url);
+      success("Analysis initiated! Redirecting to activity page...");
+      navigate("/scraping-activity");
+    } catch (err: any) {
+      const msg = String(err?.message || "");
+
+      // Queue-on-lock behaviour
+      if (/already in progress|busy|locked/i.test(msg)) {
+        const { position } = enqueue(_url);
+        warning(`A scraping job is already in progress. Added to queue (position ${position}).`);
+        navigate("/scraping-activity");
+        return;
+      }
+
+      // Friendly guidance for known external provider errors
+      if (/external review provider/i.test(msg) || /unsupported/i.test(msg)) {
+        info("Analysis failed: external provider rejected the request. Please try again later.");
+        return;
+      }
+
+      // Generic fallback for other errors
+      // Use error severity where appropriate
+      info(msg || "Failed to start analysis");
+    }
   };
 
   const handleReset = () => {

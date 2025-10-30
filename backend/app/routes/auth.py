@@ -57,10 +57,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserPublic:
 
 @router.post("/signup", response_model=TokenResponse)
 async def signup(body: UserCreate):
-	db = await get_db()
-	users = db.users
+	try:
+		db = await get_db()
+		users = db.users
+	except Exception:
+		raise HTTPException(status_code=503, detail="Database unavailable. Please try again later.")
 	# Enforce unique email
-	existing = await users.find_one({"email": body.email})
+	try:
+		existing = await users.find_one({"email": body.email})
+	except Exception:
+		raise HTTPException(status_code=503, detail="Database unavailable. Please try again later.")
 	if existing:
 		raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -75,7 +81,10 @@ async def signup(body: UserCreate):
 		"created_at": now,
 		"updated_at": now,
 	}
-	await users.insert_one(doc)
+	try:
+		await users.insert_one(doc)
+	except Exception:
+		raise HTTPException(status_code=503, detail="Database unavailable. Please try again later.")
 
 	token = create_access_token(user_id, {"email": body.email})
 	return TokenResponse(access_token=token, user=_doc_to_public(doc))
@@ -83,8 +92,11 @@ async def signup(body: UserCreate):
 
 @router.post("/signin", response_model=TokenResponse)
 async def signin(body: UserLogin):
-	db = await get_db()
-	user = await db.users.find_one({"email": body.email})
+	try:
+		db = await get_db()
+		user = await db.users.find_one({"email": body.email})
+	except Exception:
+		raise HTTPException(status_code=503, detail="Database unavailable. Please try again later.")
 	if not user or not verify_password(body.password, user.get("password_hash", "")):
 		raise HTTPException(status_code=400, detail="Invalid credentials")
 	token = create_access_token(str(user["_id"]), {"email": user["email"]})

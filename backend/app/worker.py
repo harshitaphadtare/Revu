@@ -7,7 +7,6 @@ from celery.utils.log import get_task_logger
 from app.services.scraper import scrape_reviews
 import redis
 
-# Broker/Backend URLs (can be overridden by env vars)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 RESULT_URL = os.getenv("RESULT_URL", REDIS_URL)
 
@@ -71,7 +70,7 @@ def _serialize_reviews(reviews) -> List[dict]:
 @celery_app.task(bind=True, name="run_scraper_task")
 def run_scraper_task(self, url: str) -> dict:
     """
-    Celery task to run the Flipkart scraper and report progress.
+    Celery task to scrape product reviews from Amazon and report progress.
     Returns a dict with {"count": int, "reviews": [...]} on success.
     """
     try:
@@ -89,29 +88,45 @@ def run_scraper_task(self, url: str) -> dict:
         except Exception:
             pass
 
+        last_pct = 0
+
+        def _do_cancel(pct: int):
+            # Mark as cancelled (use REVOKED state for clarity)
+            try:
+                redis_client.set(
+                    _meta_key(task_id),
+                    json.dumps({"state": "REVOKED", "progress": pct, "error": "cancelled by user"}),
+                    ex=60 * 60 * 24,
+                )
+            except Exception:
+                pass
+            # Release lock if owned by this task
+            try:
+                owner = redis_client.get(LOCK_TASK_KEY)
+                if owner == task_id:
+                    redis_client.delete(LOCK_KEY)
+                    redis_client.delete(LOCK_TASK_KEY)
+            except Exception:
+                pass
+            # Update Celery task state and abort
+            try:
+                self.update_state(state=states.REVOKED, meta={"exc": "cancelled by user"})
+            except Exception:
+                pass
+            raise Exception("cancelled by user")
+
+        def _cancel_check():
+            try:
+                if redis_client.get(_cancel_key(task_id)):
+                    _do_cancel(last_pct)
+            except Exception:
+                pass
+
         def _update(pct: int):
             # Cooperative cancellation: check cancel flag
             try:
                 if redis_client.get(_cancel_key(task_id)):
-                    # Mark as cancelled (use FAILURE state with explicit message for simplicity)
-                    try:
-                        redis_client.set(_meta_key(task_id), json.dumps({"state": "FAILURE", "progress": pct, "error": "cancelled by user"}), ex=60 * 60 * 24)
-                    except Exception:
-                        pass
-                    # Release lock if owned by this task
-                    try:
-                        owner = redis_client.get(LOCK_TASK_KEY)
-                        if owner == task_id:
-                            redis_client.delete(LOCK_KEY)
-                            redis_client.delete(LOCK_TASK_KEY)
-                    except Exception:
-                        pass
-                    # Update Celery task state and abort
-                    try:
-                        self.update_state(state=states.FAILURE, meta={"exc": "cancelled by user"})
-                    except Exception:
-                        pass
-                    raise Exception("cancelled by user")
+                    _do_cancel(pct)
             except Exception:
                 # If any error occurs during cancel check, proceed with normal update
                 pass
@@ -122,6 +137,12 @@ def run_scraper_task(self, url: str) -> dict:
             except Exception:
                 pass
             try:
+                # store last observed pct
+                try:
+                    nonlocal last_pct
+                except Exception:
+                    pass
+                last_pct = pct
                 redis_client.set(_meta_key(task_id), json.dumps({"state": "PROGRESS", "progress": pct}), ex=60 * 60 * 24)
                 # Refresh the lock TTL so a long scrape doesn't lose the lock
                 try:
@@ -133,12 +154,12 @@ def run_scraper_task(self, url: str) -> dict:
                 pass
 
         try:
-            # Respect environment variable SCRAPER_MAX_REVIEWS when provided (default 1200)
+            # Respect environment variable SCRAPER_MAX_REVIEWS when provided (default 4000)
             max_reviews_env = os.getenv("SCRAPER_MAX_REVIEWS")
             try:
-                max_reviews = int(max_reviews_env) if max_reviews_env else 1200
+                max_reviews = int(max_reviews_env) if max_reviews_env else 4000
             except Exception:
-                max_reviews = 1200
+                max_reviews = 4000
 
             # Limit pages via env to avoid multi-hour runs; default to 50
             try:
@@ -151,9 +172,13 @@ def run_scraper_task(self, url: str) -> dict:
                 max_pages=max_pages,
                 max_reviews=max_reviews,
                 progress_cb=_update,
+                cancel_cb=_cancel_check,
             )
             serialized = _serialize_reviews(reviews)
-            result_payload = {"count": len(serialized), "reviews": serialized, "product": product_meta}
+            # Treat zero reviews as a failure to surface issues (blocked, wrong URL, etc.)
+            if len(serialized) == 0:
+                raise ValueError("No reviews scraped for the provided URL.")
+            result_payload = {"count": len(serialized), "reviews": serialized, "product": product_meta, "error": None}
             # Persist final result and meta (log before/after for debugging)
             try:
                 logger.info("Writing final result to Redis for task %s (count=%d)", task_id, len(serialized))
@@ -172,16 +197,18 @@ def run_scraper_task(self, url: str) -> dict:
             except Exception:
                 pass
             return result_payload
-        except Exception as e:
+        except ValueError as e:
+            # Handle validation errors (e.g., no reviews found)
+            error_msg = str(e)
+            logger.error("Scraper task failed with %s: %s", type(e).__name__, error_msg)
             # Persist failure info in Redis so status endpoint can read simple text
             try:
-                redis_client.set(_meta_key(self.request.id), json.dumps({"state": "FAILURE", "error": str(e)}), ex=60 * 60 * 24)
+                redis_client.set(_meta_key(self.request.id), json.dumps({"state": "FAILURE", "error": error_msg}), ex=60 * 60 * 24)
             except Exception:
                 pass
-            logger.exception("Scraper task failed: %s", e)
-            # Update Celery state and re-raise to keep Celery semantics
+            # Also persist a result payload with error for clients that expect it in result key
             try:
-                self.update_state(state=states.FAILURE, meta={"exc": str(e)})
+                redis_client.set(_result_key(task_id), json.dumps({"count": 0, "reviews": [], "product": None, "error": error_msg}), ex=60 * 60 * 24)
             except Exception:
                 pass
             # Release the lock only if it still belongs to this task
@@ -193,7 +220,27 @@ def run_scraper_task(self, url: str) -> dict:
             except Exception:
                 pass
             raise
+        except Exception as e:
+            # Persist failure info in Redis so status endpoint can read simple text
+            try:
+                redis_client.set(_meta_key(self.request.id), json.dumps({"state": "FAILURE", "error": str(e)}), ex=60 * 60 * 24)
+            except Exception:
+                pass
+            # Also persist a result payload with error for clients that expect it in result key
+            try:
+                redis_client.set(_result_key(task_id), json.dumps({"count": 0, "reviews": [], "product": None, "error": str(e)}), ex=60 * 60 * 24)
+            except Exception:
+                pass
+            logger.exception("Scraper task failed: %s", e)
+            # Release the lock only if it still belongs to this task
+            try:
+                owner = redis_client.get(LOCK_TASK_KEY)
+                if owner == task_id:
+                    redis_client.delete(LOCK_KEY)
+                    redis_client.delete(LOCK_TASK_KEY)
+            except Exception:
+                pass
+            raise
     except Exception as e:
         logger.exception("Scraper task failed: %s", e)
-        self.update_state(state=states.FAILURE, meta={"exc": str(e)})
         raise
