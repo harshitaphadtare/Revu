@@ -1,5 +1,7 @@
 ## Description
 
+<!-- write a short description about what this PR does. Link to any related issues -->
+
 Fixes: #issue_number
 
 ## Changes Made
@@ -35,3 +37,5 @@ Fixes: #issue_number
 - [ ] I have added tests that prove my fix is effective or that my feature works.
 - [ ] I have verified that no API keys or other secrets are committed.
 - [ ] I have updated `.env.example` with any new environment variables.
+- [ ] I have read the [Contribution Guidelines](https://github.com/harshitaphadtare/Revu/blob/main/CONTRIBUTING.md)
+- [ ] I have read, and abide by the [Code of Conduct](https://github.com/harshitaphadtare/Revu/blob/main/CODE_OF_CONDUCT.md)
