@@ -591,7 +591,7 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
                       placeholder="Search reviews..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-64 rounded-lg bg-background dark:bg-zinc-900 border-border dark:border-zinc-700 text-foreground dark:text-white"
+                      className="pl-10 w-full sm:w-64 rounded-lg bg-background dark:bg-zinc-900 border-border dark:border-zinc-700 text-foreground dark:text-white"
                     />
                   </div>
                   <Select value={sentimentFilter} onValueChange={setSentimentFilter}>

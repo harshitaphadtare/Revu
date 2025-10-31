@@ -33,7 +33,7 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
         boxShadow: isDark ? "0 1px 0 rgba(0,0,0,0.6) inset" : undefined,
       }}
     >
-  <div className="max-w-full px-10 py-4 grid grid-cols-3 items-center">
+  <div className="max-w-full px-6 py-4 grid grid-cols-1 md:grid-cols-3 items-center gap-2">
         {/* Left: Logo */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -54,7 +54,7 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="flex items-center justify-center gap-6"
+            className="hidden md:flex items-center justify-center gap-6"
           >
             <NavLink to="/" end className={({ isActive }) => navLinkClass(isActive)}>
               Home
@@ -75,7 +75,7 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
-          className="flex items-center justify-end gap-4"
+          className="flex items-center justify-end gap-4 mt-3 md:mt-0"
         >
           <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
           {isAuthed ? (
