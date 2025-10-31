@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { NavLink } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
+import NotificationBell from "./NotificationBell";
 import { getUser } from "@/lib/auth";
 
 type SiteHeaderProps = {
@@ -78,6 +79,7 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
           className="flex items-center justify-end gap-4"
         >
           <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
+          <NotificationBell />
           {isAuthed ? (
             <motion.button
               whileHover={{ scale: 1.02 }}
