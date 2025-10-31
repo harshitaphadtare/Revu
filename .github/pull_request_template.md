@@ -36,6 +36,6 @@ Fixes: #issue_number
 - [ ] My changes generate no new warnings.
 - [ ] I have added tests that prove my fix is effective or that my feature works.
 - [ ] I have verified that no API keys or other secrets are committed.
-- [ ] I have updated `.env.example` with any new environment variables.
+- [ ] I have updated [`.env.example`](https://github.com/harshitaphadtare/Revu/blob/main/.env.example) with any new environment variables.
 - [ ] I have read the [Contribution Guidelines](https://github.com/harshitaphadtare/Revu/blob/main/CONTRIBUTING.md)
 - [ ] I have read, and abide by the [Code of Conduct](https://github.com/harshitaphadtare/Revu/blob/main/CODE_OF_CONDUCT.md)
