@@ -6,6 +6,16 @@ import redis
 from celery.result import AsyncResult
 from app.routes.auth import get_current_user
 from app.schemas.user import UserPublic
+from app.models.schemas import (
+    ReviewRequest, 
+    ScrapeResult, 
+    SingleReview, 
+    ProductMeta,
+    StartScrapeResponse,
+    ScrapeStatusResponse,
+    CancelScrapeResponse,
+    ScrapeLockStatusResponse
+)
 
 router = APIRouter(prefix="", tags=["Fetch Review Job"])
 
@@ -20,7 +30,7 @@ TASK_CANCEL_KEY = "revu:task:{job_id}:cancel"
 class StartScrapeRequest(BaseModel):
     url: HttpUrl
 
-@router.post("/start-scrape")
+@router.post("/start-scrape", response_model=StartScrapeResponse)
 def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends(get_current_user)):
     # Per-user daily rate limiting (5/day)
     try:
@@ -55,13 +65,13 @@ def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends
     try:
         task = celery_app.send_task("run_scraper_task", args=[str(payload.url)])
         redis_client.set(f"{LOCK_KEY}:task", task.id, ex=LOCK_TTL)
-        return {"job_id": task.id}
+        return StartScrapeResponse(job_id=task.id)
     except Exception as exc:
         redis_client.delete(LOCK_KEY)
         redis_client.delete(f"{LOCK_KEY}:task")
         raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {exc}")
 
-@router.get("/scrape-status/{job_id}")
+@router.get("/scrape-status/{job_id}", response_model=ScrapeStatusResponse)
 def scrape_status(job_id: str):
     try:
         meta_raw = redis_client.get(TASK_META_KEY.format(job_id=job_id))
@@ -88,52 +98,55 @@ def scrape_status(job_id: str):
                 redis_client.delete(f"{LOCK_KEY}:task")
             except Exception:
                 pass
-            return {
-                "job_id": job_id,
-                "state": "SUCCESS",
-                "progress": 100,
-                "result": result.get("reviews") if result else None,
-                "count": result.get("count") if result else None,
-                "product": result.get("product") if result else None,
-                "error": None,
-            }
+            return ScrapeStatusResponse(
+                job_id=job_id,
+                state="SUCCESS",
+                progress=100,
+                result=result.get("reviews") if result else None,
+                count=result.get("count") if result else None,
+                product=result.get("product") if result else None,
+                error=None,
+            )
         if state == "PROGRESS":
-            return {
-                "job_id": job_id,
-                "state": "PROGRESS",
-                "progress": meta.get("progress", 0),
-                "result": None,
-                "count": None,
-                "error": None,
-            }
+            return ScrapeStatusResponse(
+                job_id=job_id,
+                state="PROGRESS",
+                progress=meta.get("progress", 0),
+                result=None,
+                count=None,
+                product=None,
+                error=None,
+            )
         if state == "REVOKED":
             try:
                 redis_client.delete(LOCK_KEY)
                 redis_client.delete(f"{LOCK_KEY}:task")
             except Exception:
                 pass
-            return {
-                "job_id": job_id,
-                "state": "REVOKED",
-                "progress": meta.get("progress", 0),
-                "result": None,
-                "count": None,
-                "error": meta.get("error"),
-            }
+            return ScrapeStatusResponse(
+                job_id=job_id,
+                state="REVOKED",
+                progress=meta.get("progress", 0),
+                result=None,
+                count=None,
+                product=None,
+                error=meta.get("error"),
+            )
         if state == "FAILURE":
             try:
                 redis_client.delete(LOCK_KEY)
                 redis_client.delete(f"{LOCK_KEY}:task")
             except Exception:
                 pass
-            return {
-                "job_id": job_id,
-                "state": "FAILURE",
-                "progress": meta.get("progress", 0),
-                "result": None,
-                "count": None,
-                "error": meta.get("error"),
-            }
+            return ScrapeStatusResponse(
+                job_id=job_id,
+                state="FAILURE",
+                progress=meta.get("progress", 0),
+                result=None,
+                count=None,
+                product=None,
+                error=meta.get("error"),
+            )
 
     # Fallback to celery
     try:
@@ -160,35 +173,39 @@ def scrape_status(job_id: str):
         except Exception:
             pass
     # Normalize output; do not put the whole info dict into error when SUCCESS
-    payload = {
-        "job_id": job_id,
-        "state": state,
-        "progress": 0,
-        "result": None,
-        "count": None,
-        "product": None,
-        "error": None,
-    }
     if state == "SUCCESS" and isinstance(info, dict):
-        payload.update({
-            "progress": 100,
-            "result": info.get("reviews"),
-            "count": info.get("count"),
-            "product": info.get("product"),
-        })
+        return ScrapeStatusResponse(
+            job_id=job_id,
+            state=state,
+            progress=100,
+            result=info.get("reviews"),
+            count=info.get("count"),
+            product=info.get("product"),
+            error=None,
+        )
     elif state == "FAILURE":
-        payload.update({
-            "progress": info.get("progress", 0) if isinstance(info, dict) else 0,
-            "error": info.get("exc") if isinstance(info, dict) else (str(info) if info else None),
-        })
+        return ScrapeStatusResponse(
+            job_id=job_id,
+            state=state,
+            progress=info.get("progress", 0) if isinstance(info, dict) else 0,
+            result=None,
+            count=None,
+            product=None,
+            error=info.get("exc") if isinstance(info, dict) else (str(info) if info else None),
+        )
     else:
-        payload.update({
-            "progress": info.get("progress", 0) if isinstance(info, dict) else 0,
-        })
-    return payload
+        return ScrapeStatusResponse(
+            job_id=job_id,
+            state=state,
+            progress=info.get("progress", 0) if isinstance(info, dict) else 0,
+            result=None,
+            count=None,
+            product=None,
+            error=None,
+        )
 
 
-@router.post("/cancel-scrape/{job_id}")
+@router.post("/cancel-scrape/{job_id}", response_model=CancelScrapeResponse)
 def cancel_scrape(job_id: str):
     """Cooperative cancellation: set a cancel flag and try to revoke the Celery task."""
     # Set cancel flag in Redis so worker sees it on next progress update
@@ -229,16 +246,16 @@ def cancel_scrape(job_id: str):
     except Exception:
         pass
 
-    return {"job_id": job_id, "cancel_requested": True}
+    return CancelScrapeResponse(job_id=job_id, cancel_requested=True)
 
 
-@router.get("/scrape-lock-status")
+@router.get("/scrape-lock-status", response_model=ScrapeLockStatusResponse)
 def scrape_lock_status():
     """Return whether the single-job lock is held and by which task (if known)."""
     try:
         locked = bool(redis_client.exists(LOCK_KEY))
         owner = redis_client.get(f"{LOCK_KEY}:task") if locked else None
         ttl = redis_client.ttl(LOCK_KEY) if locked else None
-        return {"locked": locked, "owner_job_id": owner, "ttl": ttl}
+        return ScrapeLockStatusResponse(locked=locked, owner_job_id=owner, ttl=ttl)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Error reading lock status: {exc}")
