@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { X, Trash2, Eye } from "lucide-react";
 import { ProgressRing } from "@/components/utils/ProgressRing";
 import { useToast } from "@/hooks/useToast";
@@ -20,6 +20,104 @@ interface ScrapingActivityPageProps {
   isDark: boolean;
   onThemeToggle: () => void;
   onGetStarted: () => void;
+}
+
+type StatusVariant = "queued" | "fetching" | "processing" | "analyzing" | "summarizing" | "completed" | "cancelled" | "failed";
+
+type StatusState = {
+  variant: StatusVariant;
+  label: string;
+  helper: string;
+  pulse?: boolean;
+};
+
+const STATUS_VARIANTS: Record<StatusVariant, { wrapper: string; text: string; dot: string }> = {
+  queued: {
+    wrapper: "bg-amber-50 dark:bg-amber-900/25 border-amber-200 dark:border-amber-800/40",
+    text: "text-amber-700 dark:text-amber-200",
+    dot: "bg-amber-500 dark:bg-amber-300",
+  },
+  fetching: {
+    wrapper: "bg-slate-100 dark:bg-zinc-900/40 border-slate-200 dark:border-zinc-700/50",
+    text: "text-slate-700 dark:text-slate-200",
+    dot: "bg-slate-500 dark:bg-zinc-400",
+  },
+  processing: {
+    wrapper: "bg-sky-50 dark:bg-sky-900/25 border-sky-200 dark:border-sky-800/40",
+    text: "text-sky-700 dark:text-sky-200",
+    dot: "bg-sky-500 dark:bg-sky-300",
+  },
+  analyzing: {
+    wrapper: "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800/50",
+    text: "text-indigo-700 dark:text-indigo-200",
+    dot: "bg-indigo-500 dark:bg-indigo-300",
+  },
+  summarizing: {
+    wrapper: "bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800/40",
+    text: "text-purple-700 dark:text-purple-200",
+    dot: "bg-purple-500 dark:bg-purple-300",
+  },
+  completed: {
+    wrapper: "bg-emerald-50 dark:bg-emerald-900/25 border-emerald-200 dark:border-emerald-800/40",
+    text: "text-emerald-700 dark:text-emerald-200",
+    dot: "bg-emerald-500 dark:bg-emerald-300",
+  },
+  cancelled: {
+    wrapper: "bg-rose-50 dark:bg-rose-900/25 border-rose-200 dark:border-rose-800/50",
+    text: "text-rose-700 dark:text-rose-200",
+    dot: "bg-rose-500 dark:bg-rose-300",
+  },
+  failed: {
+    wrapper: "bg-rose-100 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/60",
+    text: "text-rose-700 dark:text-rose-200",
+    dot: "bg-rose-500 dark:bg-rose-300",
+  },
+};
+
+const STATUS_PANEL_VARIANTS: Record<StatusVariant, string> = {
+  queued: "bg-gradient-to-r from-amber-50/70 via-white to-white dark:from-amber-950/40 dark:via-transparent dark:to-transparent border border-amber-200/60 dark:border-amber-900/40",
+  fetching: "bg-gradient-to-r from-slate-100/70 via-white to-white dark:from-zinc-900/40 dark:via-transparent dark:to-transparent border border-slate-200/60 dark:border-zinc-800/40",
+  processing: "bg-gradient-to-r from-sky-50/70 via-white to-white dark:from-sky-950/35 dark:via-transparent dark:to-transparent border border-sky-200/60 dark:border-sky-900/40",
+  analyzing: "bg-gradient-to-r from-indigo-50/70 via-white to-white dark:from-indigo-950/35 dark:via-transparent dark:to-transparent border border-indigo-200/60 dark:border-indigo-900/40",
+  summarizing: "bg-gradient-to-r from-purple-50/70 via-white to-white dark:from-purple-950/35 dark:via-transparent dark:to-transparent border border-purple-200/60 dark:border-purple-900/40",
+  completed: "bg-gradient-to-r from-emerald-50/70 via-white to-white dark:from-emerald-950/35 dark:via-transparent dark:to-transparent border border-emerald-200/60 dark:border-emerald-900/40",
+  cancelled: "bg-gradient-to-r from-rose-50/70 via-white to-white dark:from-rose-950/35 dark:via-transparent dark:to-transparent border border-rose-200/60 dark:border-rose-900/40",
+  failed: "bg-gradient-to-r from-rose-100/70 via-white to-white dark:from-rose-950/40 dark:via-transparent dark:to-transparent border border-rose-200/70 dark:border-rose-900/50",
+};
+
+function StatusBadge({
+  variant,
+  label,
+  pulse = false,
+  icon,
+  className = "",
+}: {
+  variant: StatusVariant;
+  label: string;
+  pulse?: boolean;
+  icon?: ReactNode;
+  className?: string;
+}) {
+  const preset = STATUS_VARIANTS[variant];
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide ${preset.wrapper} ${className}`.trim()}
+    >
+      {icon ? (
+        <span className="flex h-4 w-4 items-center justify-center" aria-hidden>
+          {icon}
+        </span>
+      ) : pulse ? (
+        <span className="relative flex h-2.5 w-2.5 items-center justify-center" aria-hidden>
+          <span className={`absolute inline-flex h-2.5 w-2.5 rounded-full opacity-60 animate-ping ${preset.dot}`} />
+          <span className={`relative inline-flex h-2 w-2 rounded-full ${preset.dot}`} />
+        </span>
+      ) : (
+        <span className={`inline-flex h-2 w-2 rounded-full ${preset.dot}`} aria-hidden />
+      )}
+      <span className={preset.text}>{label}</span>
+    </span>
+  );
 }
 
 export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: ScrapingActivityPageProps) {
@@ -204,81 +302,68 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // derive a human-friendly status and color classes from progress percentage
-  const getStatusFromProgress = (p?: number) => {
+  // derive a human-friendly status state from progress percentage
+  const getStatusFromProgress = (p?: number): StatusState => {
     const prog = typeof p === "number" ? p : 0;
     if (prog >= 100) {
       return {
+        variant: "completed",
         label: "Complete",
-        bgClass: "bg-green-50 dark:bg-emerald-900/20",
-        borderClass: "border-green-200 dark:border-emerald-700/40",
-        textClass: "text-green-700 dark:text-emerald-200",
-        dotClass: "bg-green-500 dark:bg-emerald-400 animate-pulse",
-        useBreath: false,
+        helper: "Scrape finished and ready to review.",
+        pulse: false,
       };
     }
     if (prog >= 81) {
       return {
-        label: "Summarizing results...",
-        bgClass: "bg-violet-50 dark:bg-indigo-900/20",
-        borderClass: "border-violet-200 dark:border-indigo-800/40",
-        textClass: "text-indigo-700 dark:text-indigo-200",
-        dotClass: "bg-indigo-500 dark:bg-indigo-400 animate-pulse",
-        useBreath: false,
+        variant: "summarizing",
+        label: "Summarizing results",
+        helper: "Highlighting key findings and packaging insights.",
+        pulse: true,
       };
     }
     if (prog >= 61) {
       return {
-        label: "Analyzing sentiments...",
-        // Soft purple gradient strip in light; deep subtle glow in dark
-        bgClass: "bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/30 dark:via-indigo-900/20 dark:to-transparent",
-        borderClass: "border-violet-200 dark:border-white/10",
-        textClass: "text-indigo-700 dark:text-white",
-        dotClass: "breathing-dot",
-        useBreath: true,
+        variant: "analyzing",
+        label: "Analyzing sentiments",
+        helper: "Running classifiers and sentiment models over the data.",
+        pulse: true,
       };
     }
     if (prog >= 31) {
       return {
-        label: "Preprocessing data...",
-        bgClass: "bg-blue-50 dark:bg-blue-900/20",
-        borderClass: "border-blue-200 dark:border-blue-800/40",
-        textClass: "text-blue-700 dark:text-blue-200",
-        dotClass: "bg-blue-500 dark:bg-blue-400 animate-pulse",
-        useBreath: false,
+        variant: "processing",
+        label: "Processing data",
+        helper: "Normalizing reviews and extracting entities.",
+        pulse: true,
       };
     }
     if (prog >= 11) {
       return {
-        label: "Fetching data...",
-        bgClass: "bg-gray-50 dark:bg-zinc-900/40",
-        borderClass: "border-gray-200 dark:border-white/10",
-        textClass: "text-gray-700 dark:text-gray-300",
-        dotClass: "bg-gray-300 dark:bg-zinc-600 animate-pulse",
-        useBreath: false,
+        variant: "fetching",
+        label: "Fetching data",
+        helper: "Collecting reviews from the source.",
+        pulse: false,
       };
     }
     return {
+      variant: "queued",
       label: "Queued",
-      bgClass: "bg-gray-50 dark:bg-zinc-900/40",
-      borderClass: "border-gray-200 dark:border-white/10",
-      textClass: "text-gray-700 dark:text-gray-300",
-      dotClass: "bg-gray-300 dark:bg-zinc-600 animate-pulse",
-      useBreath: false,
+      helper: "Waiting for the next scraper slot.",
+      pulse: false,
     };
+  };
+
+  const resolveStatusVariant = (statusText: string | undefined, fallback: StatusVariant): StatusVariant => {
+    const normalized = (statusText || "").toLowerCase();
+    if (normalized.includes("cancel")) return "cancelled";
+    if (normalized.includes("fail") || normalized.includes("error")) return "failed";
+    if (normalized.includes("complete")) return "completed";
+    return fallback;
   };
 
   return (
     <div className={isDark ? "dark" : ""}>
   <div className="min-h-screen bg-gray-50 dark:bg-black">
-        {/* breathing animation styles (scoped-ish) */}
-        <style>{`
-          .breathing-ring{position:absolute;width:48px;height:48px;border-radius:9999px;background:radial-gradient(circle at center, rgba(124,58,237,0.18), rgba(99,102,241,0.08), transparent);animation:breath 2000ms ease-in-out infinite;display:block}
-          .breathing-dot{position:relative;width:12px;height:12px;border-radius:9999px; background:linear-gradient(135deg,#7c3aed,#6366f1); box-shadow:0 6px 18px rgba(99,102,241,0.12); display:block}
-          .breathing-dot-sm{position:relative;width:6px;height:6px;border-radius:9999px;background:linear-gradient(135deg,#7c3aed,#6366f1);box-shadow:0 4px 8px rgba(99,102,241,0.08)}
-          @keyframes breath{0%{transform:scale(.92);opacity:.75}50%{transform:scale(1.05);opacity:1}100%{transform:scale(.92);opacity:.75}}
-        `}</style>
-
         {/* Main Content */}
         <main className="max-w-full mx-auto px-10 sm:px-6 lg:px-8 py-8">
           {/* Section 1: Current Scraping Process */}
@@ -372,35 +457,28 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                     </div>
                   </div>
 
-                  {/* Progress Status Banner - gradient strip with animated dot to match mock */}
-                      {(() => {
-                        const status = getStatusFromProgress(activeJob?.Progress);
-                        return (
-                          <div className={`rounded-xl p-4 bg-violet-50 dark:bg-indigo-900/20 ${status.bgClass} ${status.borderClass} border`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="relative flex items-center justify-center" style={{ width: 48, height: 48 }}>
-                                {status.useBreath ? (
-                                  <>
-                                    <span className="breathing-ring" aria-hidden />
-                                    <span className="breathing-dot" aria-hidden />
-                                  </>
-                                ) : (
-                                  <span className={`${status.dotClass} rounded-full w-3.5 h-3.5`} aria-hidden />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-gray-600 dark:text-gray-400 mb-0.5" style={{ fontSize: "12px" }}>
-                                  Current Status
-                                </p>
-                                <p className={`${status.textClass}`} style={{ fontSize: "15px", fontWeight: 600 }}>
-                                  {activeJob.statusText || status.label}
-                                </p>
-                              </div>
-                            </div>
+                  {/* Progress Status Banner */}
+                  {(() => {
+                    const state = getStatusFromProgress(activeJob?.Progress);
+                    const variant = resolveStatusVariant(activeJob?.statusText, state.variant);
+                    const label = activeJob?.statusText || state.label;
+                    const containerClasses =
+                      STATUS_PANEL_VARIANTS[variant] || "bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10";
+                    const shouldPulse = state.pulse && !["cancelled", "failed", "completed"].includes(variant);
+                    return (
+                      <div className={`rounded-xl p-4 ${containerClasses}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                              Current Status
+                            </span>
+                            <StatusBadge variant={variant} label={label} pulse={shouldPulse} />
                           </div>
-                        );
-                      })()}
+                          <p className="text-sm text-gray-600 dark:text-gray-400 sm:max-w-md sm:text-right">{state.helper}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Action Button */}
                     <div className="pt-2">
@@ -514,22 +592,11 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                           </td>
                           <td className="py-4 px-4">
                             {(() => {
-                              const status = getStatusFromProgress(activeJob?.Progress);
-                              return (
-                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 ${status.bgClass} ${status.borderClass} rounded-lg`}>
-                                  {status.useBreath ? (
-                                    <div className="relative flex items-center justify-center" style={{ width: 14, height: 14 }}>
-                                      <span className="breathing-ring" aria-hidden />
-                                      <span className="breathing-dot" aria-hidden />
-                                    </div>
-                                  ) : (
-                                    <div className={`w-1.5 h-1.5 rounded-full ${status.dotClass}`} />
-                                  )}
-                                  <span className={`${status.textClass}`} style={{ fontSize: "13px", fontWeight: 600 }}>
-                                    {activeJob.statusText || status.label}
-                                  </span>
-                                </div>
-                              );
+                              const state = getStatusFromProgress(activeJob?.Progress);
+                              const variant = resolveStatusVariant(activeJob?.statusText, state.variant);
+                              const label = activeJob?.statusText || state.label;
+                              const shouldPulse = state.pulse && !["cancelled", "failed", "completed"].includes(variant);
+                              return <StatusBadge variant={variant} label={label} pulse={shouldPulse} />;
                             })()}
                           </td>
                           <td className="py-4 px-4">
@@ -646,14 +713,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                               </div>
                             </td>
                             <td className="py-4 px-4">
-                              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg dark:bg-orange-900/20 dark:border-orange-800/40">
-                                <svg className="w-3 h-3 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <span className="text-orange-700 dark:text-orange-200" style={{ fontSize: "13px", fontWeight: 600 }}>
-                                  Queued
-                                </span>
-                              </div>
+                              <StatusBadge variant="queued" label="Queued" />
                             </td>
                             <td className="py-4 px-4">
                               <button
@@ -756,12 +816,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                               </div>
                             </td>
                             <td className="py-4 px-4">
-                              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                <span className="text-emerald-700 dark:text-emerald-200" style={{ fontSize: "13px", fontWeight: 600 }}>
-                                  Completed
-                                </span>
-                              </div>
+                              <StatusBadge variant="completed" label="Completed" />
                             </td>
                             <td className="py-4 px-4">
                               <button
