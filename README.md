@@ -1,8 +1,8 @@
 # Overview
 
-Revu is a product review intelligence platform that scrapes product reviews (currently Amazon), analyzes sentiment and topics, and generates concise summaries and insight reports. It pairs a FastAPI backend (with Celery workers), a React + Vite frontend, Redis for queueing, and MongoDB for persistence.
+Revu is a product review intelligence platform that scrapes product reviews (currently works for [Amazon](https://amazon.com). Revu then analyzes sentiment and topics, and generates concise summaries and insight reports. It pairs a FastAPI backend (with Celery workers), a React + Vite frontend, Redis for queueing, and MongoDB for persistence.
 
-This README provides a quick developer and operator guide: setup, API examples, project layout, testing, deployment notes, and contribution guidelines.
+This is a quick developer and operator guide: setup, API examples, project layout, testing, deployment notes, and contribution guidelines.
 
 ## Project structure
 
@@ -229,15 +229,15 @@ npx prettier --write src/
 
 ## Contributing
 
-See `CONTRIBUTING.md` for bug reports, feature requests, and PR workflow. Be sure to run tests and include clear descriptions in PRs.
+See our [contribution guidelines](https://github.com/harshitaphadtare/Revu/blob/main/CONTRIBUTING.md) for how to write bug reports and feature requests, and read more about our PR workflow. Be sure to run tests and include clear descriptions in PRs.
 
 ## Code of Conduct
 
-Our community follows the `CODE_OF_CONDUCT.md`. Please read and adhere to it.
+Our community follows the Contributor Covenant as the basis for our [Code of Conduct](https://github.com/harshitaphadtare/Revu/blob/main/CODE_OF_CONDUCT.md). Please read and adhere to it.
 
 ## License
 
-This project is licensed under the MIT License — see the `LICENSE` file for details.
+This project is licensed under the MIT License. See the [LICENSE file](https://github.com/harshitaphadtare/Revu/blob/main/LICENSE) for details.
 
 ## Maintainers
 

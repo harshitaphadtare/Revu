@@ -125,10 +125,10 @@ Maintainers will review, request changes if necessary, then merge when ready.
 
 ## Code of Conduct
 
-By participating in this project you agree to abide by our Code of Conduct (`CODE_OF_CONDUCT.md`). Please be respectful and welcoming.
+By participating in this project you agree to abide by our [Code of Conduct](https://github.com/harshitaphadtare/Revu/blob/main/CODE_OF_CONDUCT.md). Please be respectful and welcoming.
 
 ---
 
-If you'd like, I can also add a small PR template to `.github/PULL_REQUEST_TEMPLATE.md` and a CONTRIBUTING checklist file — tell me if you want that and I'll create it.
+If you'd like, I can also add a small PR to [the Pull Request Template](https://github.com/harshitaphadtare/Revu/blob/main/.github/pull_request_template.md) and a CONTRIBUTING checklist file — tell me if you want that and I'll create it.
 
 Thanks for contributing — we value your help and look forward to reviewing your changes!
