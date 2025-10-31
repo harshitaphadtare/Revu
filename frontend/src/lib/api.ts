@@ -1,6 +1,7 @@
+import { DEFAULT_LOCAL_API_URL } from "./constants";
 import { getToken, saveAuth, saveUser, type PublicUser } from "./auth";
 
-const rawBase = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+const rawBase = (import.meta as any).env?.VITE_API_URL || DEFAULT_LOCAL_API_URL;
 const baseURL: string = String(rawBase).replace(/\/$/, "");
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
