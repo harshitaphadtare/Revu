@@ -32,10 +32,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright browsers (chromium)
-        working-directory: backend
-        run: python -m playwright install chromium
-
       - name: Run backend tests (pytest)
         working-directory: backend
         run: python -m pytest -q
