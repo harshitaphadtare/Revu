@@ -4,11 +4,10 @@ import os, json
 from datetime import datetime, timedelta, timezone
 import redis
 from celery.result import AsyncResult
-from app.routes.auth import get_current_user
-from app.db.mongodb import get_db
-from datetime import timezone
-from app.schemas.user import UserPublic
-from app.models.schemas import (
+from .auth import get_current_user
+from ..db.mongodb import get_db
+from ..schemas.user import UserPublic
+from ..models.schemas import (
     ReviewRequest, 
     ScrapeResult, 
     SingleReview, 
@@ -39,7 +38,7 @@ class StartScrapeRequest(BaseModel):
     url: HttpUrl
 
 @router.post("/start-scrape", response_model=StartScrapeResponse)
-def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends(get_current_user)):
+async def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends(get_current_user)):
     # Per-user daily rate limiting (default configurable via DAILY_SCRAPE_LIMIT).
     # If DAILY_SCRAPE_LIMIT <= 0, rate limiting is disabled for testing.
     if DAILY_SCRAPE_LIMIT and int(DAILY_SCRAPE_LIMIT) > 0:
@@ -97,7 +96,7 @@ def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends
         raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {exc}")
 
 @router.get("/scrape-status/{job_id}", response_model=ScrapeStatusResponse)
-def scrape_status(job_id: str):
+async def scrape_status(job_id: str):
     try:
         meta_raw = redis_client.get(TASK_META_KEY.format(job_id=job_id))
     except Exception as exc:
