@@ -1,10 +1,17 @@
 from fastapi import APIRouter
-from app.models.schemas import AnalyzeRequest
+from app.models.schemas import (
+    AnalyzeRequest, 
+    SingleReview, 
+    ReviewResponse, 
+    AnalyzeResponse,
+    SentimentCounts,
+    TrendDataPoint
+)
 from app.services import sentiment,topic_extractor,preprocessing,summarizer
 
 router = APIRouter(prefix="/analyze",tags=["Analysis"])
 
-@router.post("/")
+@router.post("/", response_model=AnalyzeResponse)
 def analyze_reviews(payload: AnalyzeRequest):
     # 1. Clean text
     reviews = [r.model_dump() for r in payload.reviews]
@@ -30,23 +37,23 @@ def analyze_reviews(payload: AnalyzeRequest):
     trend_data = []
     for r in sentiments:
         if r.get("review_date"):
-            trend_data.append({
-                'date':r['review_date'],
-                'positive': 1 if r['sentiment'].lower() == 'positive' else 0,
-                'negative': 1 if r['sentiment'].lower() == 'negative' else 0
-            })
+            trend_data.append(TrendDataPoint(
+                date=r['review_date'],
+                positive=1 if r['sentiment'].lower() == 'positive' else 0,
+                negative=1 if r['sentiment'].lower() == 'negative' else 0
+            ))
 
-    return {
-        "total_reviews": len(reviews),
-        "sentiment_counts":{
-            'positive':len(positive_texts),
-            'negative':len(negative_texts),
-            'neutral': len(reviews) - len(positive_texts) - len(negative_texts)
-        },
-        "top_positive_themes": positive_themes,
-        "top_negative_themes": negative_themes,
-        "trend_data": trend_data,
-        "reviews": sentiments,
-        "summary": summary,
-        "summary_short": summary_short
-    }
+    return AnalyzeResponse(
+        total_reviews=len(reviews),
+        sentiment_counts=SentimentCounts(
+            positive=len(positive_texts),
+            negative=len(negative_texts),
+            neutral=len(reviews) - len(positive_texts) - len(negative_texts)
+        ),
+        top_positive_themes=positive_themes,
+        top_negative_themes=negative_themes,
+        trend_data=trend_data,
+        reviews=sentiments,
+        summary=summary,
+        summary_short=summary_short
+    )
