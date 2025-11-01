@@ -503,7 +503,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
 
   return (
     <div className={isDark ? "dark" : ""}>
-  <div className="min-h-screen bg-gray-50 dark:bg-black">
+      <div className="min-h-screen bg-gray-50 dark:bg-black">
         {/* breathing animation styles */}
         <style>{`
           .breathing-ring {
@@ -563,15 +563,18 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
         <main className="max-w-full mx-auto px-10 sm:px-6 lg:px-8 py-8">
           {/* Section 1: Current Scraping Process */}
           {activeJob && (
-            <div className="relative overflow-hidden bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-2xl p-8 mb-6 shadow-sm dark:shadow-none">
+            <div className="relative overflow-hidden bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-zinc-800 rounded-2xl p-8 mb-6 shadow-sm dark:shadow-none">
               {/* subtle diagonal texture (like mock) */}
               <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 opacity-40 blur-2xl dark:from-purple-900/10 dark:to-blue-900/10" />
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-black dark:text-white" style={{ fontSize: "24px", fontWeight: 600 }}>
                   Current Scraping Process
                 </h2>
-                <div className="px-3 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 dark:bg-emerald-900/30 dark:border-emerald-800/40 dark:text-emerald-200">
-                  <span className="" style={{ fontSize: "13px", fontWeight: 500 }}>
+                <div
+                  className={isDark ? "px-3 py-1 rounded-full bg-transparent border" : "px-3 py-1 rounded-full bg-green-50 border border-green-200 text-green-700"}
+                  style={isDark ? { borderColor: '#3da42bff', boxShadow: '0 0 10px rgba(57,255,20,0.10)', background: 'rgba(57,255,20,0.02)' } : undefined}
+                >
+                  <span style={{ fontSize: "13px", fontWeight: 500, color: isDark ? '#3da42bff' : undefined }}>
                     Active
                   </span>
                 </div>
@@ -581,7 +584,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                 <div className="flex-shrink-0">
                   <div className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-950/20 dark:to-blue-950/20 rounded-full blur-2xl opacity-60" />
-                    <div className="relative bg-white dark:bg-zinc-900/50 p-6 rounded-full border border-gray-200 dark:border-white/10">
+                    <div className="relative bg-white dark:bg-[#1A1A1A] p-6 rounded-full border border-gray-200 dark:border-zinc-800">
                       <ProgressRing progress={activeJob.Progress || 0} size={200} strokeWidth={12} />
                     </div>
                   </div>
@@ -592,9 +595,9 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                   {/* Info Cards Grid - ensure Job ID and Date Started sit on the same row */}
                   <div className="flex w-full gap-4 flex-wrap md:flex-nowrap">
                     {/* Job ID Card */}
-                    <div className="w-full md:w-1/2 bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:shadow-md transition-all">
+                    <div className="w-full md:w-1/2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl p-4 hover:shadow-md transition-all">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-900/50 rounded-lg flex items-center justify-center border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-lg flex items-center justify-center border border-gray-200 dark:border-zinc-700">
                           <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                           </svg>
@@ -611,9 +614,9 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                     </div>
 
                     {/* Date Started Card */}
-                    <div className="w-full md:w-1/2 bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:shadow-md transition-all">
+                    <div className="w-full md:w-1/2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl p-4 hover:shadow-md transition-all">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-900/50 rounded-lg flex items-center justify-center border border-gray-200 dark:border-white/10">
+                        <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-lg flex items-center justify-center border border-gray-200 dark:border-zinc-700">
                           <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
@@ -631,9 +634,9 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                   </div>
 
                   {/* Product Card */}
-                  <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:shadow-md transition-all">
+                  <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl p-4 hover:shadow-md transition-all">
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-900/50 rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-white/10">
+                        <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-zinc-700">
                         <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                         </svg>
@@ -710,14 +713,14 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                     <div className="pt-2">
                       <button
                         onClick={cancelCurrentProcess}
-                        className="inline-flex items-center gap-3 px-6 py-3 rounded-lg border text-red-600 bg-white border-red-200 hover:bg-red-50 transition-transform active:scale-[0.98] dark:bg-transparent dark:text-red-400 dark:border-red-500/40 dark:hover:bg-red-500/10"
+                        className={`inline-flex items-center gap-3 px-6 py-3 rounded-lg border transition-transform active:scale-[0.98] ${isDark ? 'bg-transparent text-red-400 border-red-500/60 hover:bg-red-500/10' : 'text-red-600 bg-white border-red-200 hover:bg-red-50'}`}
                         style={{ fontSize: "14px", fontWeight: 600 }}
                         aria-label="Cancel Process"
                       >
-                        <span className="inline-flex items-center justify-center w-6 h-6 bg-red-50 dark:bg-red-500/10 dark:border-red-500/30">
-                          <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded ${isDark ? 'bg-red-700/10 border border-red-500/40' : 'bg-red-50'}`}>
+                          <X className={`w-4 h-4 ${isDark ? 'text-red-400' : 'text-red-600'}`} />
                         </span>
-                        Cancel Process
+                        <span className={isDark ? 'text-red-300' : ''}>Cancel Process</span>
                       </button>
                     </div>
                 </div>
@@ -726,19 +729,24 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
           )}
 
           {/* Section 2: Scrape Management */}
-          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-2xl p-8 shadow-sm dark:shadow-none">
+          <div className="bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-zinc-800 rounded-2xl p-8 shadow-sm dark:shadow-none">
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-black dark:text-white" style={{ fontSize: "24px", fontWeight: 600 }}>
                 Scrape Management
               </h2>
-              <div className="flex items-center gap-2">
-                <div className="px-3 py-1 rounded-full bg-orange-50 border border-orange-200 dark:bg-orange-900/20 dark:border-orange-800/40">
-                  <span className="text-orange-700 dark:text-orange-200" style={{ fontSize: "12px", fontWeight: 500 }}>
+                <div className="flex items-center gap-2">
+                <div
+                  className={isDark ? 'px-3 py-1 rounded-full border' : 'px-3 py-1 rounded-full bg-orange-50 border border-orange-200'}
+                  style={isDark ? { borderColor: '#3da42bff', background: 'transparent', boxShadow: '0 0 8px rgba(57,255,20,0.06)' } : undefined}
+                >
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: isDark ? '#3da42bff' : undefined }}>
                     {activeJob ? 1 : 0} Active
                   </span>
                 </div>
-                <div className="px-3 py-1 rounded-full bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/40">
-                  <span className="text-blue-700 dark:text-blue-200" style={{ fontSize: "12px", fontWeight: 500 }}>
+                <div className={
+                  `px-3 py-1 rounded-full ${queuedJobs.length === 0 ? 'bg-gray-50 border border-gray-200 dark:bg-zinc-800 dark:border-zinc-700' : 'bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/40'}`
+                }>
+                  <span className={queuedJobs.length === 0 ? 'text-gray-700 dark:text-gray-300' : 'text-blue-700 dark:text-blue-200'} style={{ fontSize: "12px", fontWeight: 500 }}>
                     {queuedJobs.length} Queued
                   </span>
                 </div>
@@ -754,12 +762,12 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                 </h3>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+              <div className="bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-50 dark:bg-zinc-900/50 border-b border-gray-200 dark:border-white/10">
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                      <tr className="bg-muted/50 dark:bg-zinc-900/50 border-b border-border dark:border-zinc-700">
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -767,7 +775,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             JOB ID
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -775,7 +783,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             PRODUCT
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -783,7 +791,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             STATUS
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -791,17 +799,17 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             PROGRESS
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           ACTION
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {activeJob ? (
-                        <tr className="border-b border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all group">
+                        <tr className="border-b border-border dark:border-zinc-700 hover:bg-accent/50 dark:hover:bg-zinc-800/50 transition-all group">
                           <td className="py-4 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="text-gray-900 dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
+                              <span className="text-foreground dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
                                 {activeJob.id}
                               </span>
                             </div>
@@ -813,14 +821,14 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                                   href={activeJob.productLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                  className="text-foreground dark:text-gray-200 hover:underline truncate"
                                   style={{ fontSize: "12px", display: "inline-block" }}
                                   title={activeJob.productLink}
                                 >
                                   {activeJob.productName || cleanUrl(activeJob.productLink)}
                                 </a>
                               ) : (
-                                <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={activeJob.productLink}>
+                                <p className="text-muted-foreground dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={activeJob.productLink}>
                                   {cleanUrl(activeJob.productLink)}
                                 </p>
                               )}
@@ -869,7 +877,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                           <td className="py-4 px-4">
                             <div className="w-40">
                               <div className="flex items-center justify-center">
-                                <span className="text-gray-900 dark:text-white" style={{ fontSize: "14px", fontWeight: 700 }}>
+                                <span className="text-foreground dark:text-white" style={{ fontSize: "14px", fontWeight: 700 }}>
                                   {(activeJob?.Progress ?? 0)}%
                                 </span>
                               </div>
@@ -878,7 +886,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                           <td className="py-4 px-4">
                             <button
                               onClick={cancelCurrentProcess}
-                              className="p-2.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800/30 group-hover:scale-110"
+                              className="p-2.5 hover:bg-red-50 dark:hover:bg-red-600/10 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-600/40 group-hover:scale-110"
                               title="Cancel Process"
                             >
                               <X className="w-4 h-4 text-red-600 dark:text-red-400" />
@@ -889,16 +897,16 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                         <tr>
                           <td colSpan={5} className="py-12 text-center">
                             <div className="flex flex-col items-center gap-3">
-                              <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-900/50 rounded-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <div className="w-16 h-16 bg-muted dark:bg-zinc-900 rounded-full flex items-center justify-center">
+                                <svg className="w-8 h-8 text-muted-foreground dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-gray-900 dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
+                                <p className="text-foreground dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
                                   No active scraping process
                                 </p>
-                                <p className="text-gray-500 dark:text-gray-400" style={{ fontSize: "13px" }}>
+                                <p className="text-muted-foreground dark:text-gray-400" style={{ fontSize: "13px" }}>
                                   Start a new analysis to see it here
                                 </p>
                               </div>
@@ -921,12 +929,12 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                 </h3>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+              <div className="bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-50 dark:bg-zinc-900/50 border-b border-gray-200 dark:border-white/10">
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                      <tr className="bg-muted/50 dark:bg-zinc-900/50 border-b border-border dark:border-zinc-700">
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -934,7 +942,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             JOB ID
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -942,7 +950,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             PRODUCT
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -950,7 +958,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             STATUS
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           ACTION
                         </th>
                       </tr>
@@ -960,11 +968,11 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                         queuedJobs.map((job, index) => (
                           <tr
                             key={job.id}
-                            className="border-b border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all group last:border-0"
+                            className="border-b border-border dark:border-zinc-700 hover:bg-accent/50 dark:hover:bg-zinc-800/50 transition-all group last:border-0"
                           >
                             <td className="py-4 px-4">
                               <div className="flex items-center gap-2">
-                                <span className="text-gray-900 dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
+                                <span className="text-foreground dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
                                   {job.id}
                                 </span>
                               </div>
@@ -976,14 +984,14 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                                     href={job.productLink}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                    className="text-foreground dark:text-gray-200 hover:underline truncate"
                                     style={{ fontSize: "12px", display: "inline-block" }}
                                     title={job.productLink}
                                   >
                                     {job.productName || cleanUrl(job.productLink)}
                                   </a>
                                 ) : (
-                                  <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
+                                  <p className="text-muted-foreground dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
                                     {cleanUrl(job.productLink)}
                                   </p>
                                 )}
@@ -1002,7 +1010,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             <td className="py-4 px-4">
                               <button
                                 onClick={() => removeFromQueue(job.id)}
-                                className="p-2.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800/30 group-hover:scale-110"
+                                className="p-2.5 hover:bg-red-50 dark:hover:bg-red-600/10 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-600/40 group-hover:scale-110"
                                 title="Remove from Queue"
                               >
                                 <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
@@ -1014,16 +1022,16 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                         <tr>
                           <td colSpan={4} className="py-12 text-center">
                             <div className="flex flex-col items-center gap-3">
-                              <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-900/50 rounded-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <div className="w-16 h-16 bg-muted dark:bg-zinc-900 rounded-full flex items-center justify-center">
+                                <svg className="w-8 h-8 text-muted-foreground dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-gray-900 dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
+                                <p className="text-foreground dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
                                   No jobs in queue
                                 </p>
-                                <p className="text-gray-500 dark:text-gray-400" style={{ fontSize: "13px" }}>
+                                <p className="text-muted-foreground dark:text-gray-400" style={{ fontSize: "13px" }}>
                                   Queue another scrape to see it here
                                 </p>
                               </div>
@@ -1040,18 +1048,18 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
             {/* Table C: Completed */}
             <div className="mt-8 pt-6">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-1 h-6 bg-emerald-500 rounded-full" />
+                <div className="w-1 h-6 rounded-full" style={{ background: isDark ? '#39FF14' : undefined }} />
                 <h3 className="text-black dark:text-white" style={{ fontSize: "18px", fontWeight: 600 }}>
                   Completed
                 </h3>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+              <div className="bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-50 dark:bg-zinc-900/50 border-b border-gray-200 dark:border-white/10">
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                      <tr className="bg-muted/50 dark:bg-zinc-900/50 border-b border-border dark:border-zinc-700">
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -1059,7 +1067,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             JOB ID
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -1067,7 +1075,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             PRODUCT
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1075,7 +1083,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             STATUS
                           </div>
                         </th>
-                        <th className="text-left py-3 px-4 text-gray-600 dark:text-gray-400" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
+                        <th className="text-left py-3 px-4 text-foreground dark:text-white" style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em" }}>
                           ACTION
                         </th>
                       </tr>
@@ -1083,9 +1091,9 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                     <tbody>
                       {completedJobs.length > 0 ? (
                         completedJobs.map((job) => (
-                          <tr key={job.id} className="border-b border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all group last:border-0">
+                          <tr key={job.id} className="border-b border-border dark:border-zinc-700 hover:bg-accent/50 dark:hover:bg-zinc-800/50 transition-all group last:border-0">
                             <td className="py-4 px-4">
-                              <span className="text-gray-900 dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
+                              <span className="text-foreground dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>
                                 {job.id}
                               </span>
                             </td>
@@ -1096,30 +1104,33 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                                     href={job.productLink}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                    className="text-foreground dark:text-gray-200 hover:underline truncate"
                                     style={{ fontSize: "12px", display: "inline-block" }}
                                     title={job.productLink}
                                   >
                                     {job.productName || cleanUrl(job.productLink)}
                                   </a>
                                 ) : (
-                                  <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
+                                  <p className="text-muted-foreground dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
                                     {cleanUrl(job.productLink)}
                                   </p>
                                 )}
                               </div>
                             </td>
                             <td className="py-4 px-4">
-                              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                <span className="text-emerald-700 dark:text-emerald-200" style={{ fontSize: "13px", fontWeight: 600 }}>
+                              <div
+                                className={isDark ? 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg' : 'inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg'}
+                                style={isDark ? { background: hexToRgba('#39FF14', 0.06), borderColor: '#39FF14', boxShadow: '0 0 8px rgba(57,255,20,0.06)' } : undefined}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: isDark ? '#39FF14' : undefined }} />
+                                <span style={{ fontSize: "13px", fontWeight: 600, color: isDark ? '#39FF14' : undefined }}>
                                   Completed
                                 </span>
                               </div>
                             </td>
                             <td className="py-4 px-4">
                               <button
-                                className="p-2.5 hover:bg-gray-100 dark:hover:bg-zinc-900 rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-white/10 group-hover:scale-110"
+                                className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/6 rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-white/10 group-hover:scale-110"
                                 title="View details"
                                 onClick={() => handleViewJob(job.id)}
                               >
@@ -1132,16 +1143,16 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                         <tr>
                           <td colSpan={4} className="py-12 text-center">
                             <div className="flex flex-col items-center gap-3">
-                              <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-900/50 rounded-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <div className="w-16 h-16 bg-muted dark:bg-zinc-900 rounded-full flex items-center justify-center">
+                                <svg className="w-8 h-8 text-muted-foreground dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-gray-900 dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
+                                <p className="text-foreground dark:text-white mb-1" style={{ fontSize: "14px", fontWeight: 600 }}>
                                   No completed jobs
                                 </p>
-                                <p className="text-gray-500 dark:text-gray-400" style={{ fontSize: "13px" }}>
+                                <p className="text-muted-foreground dark:text-gray-400" style={{ fontSize: "13px" }}>
                                   Completed jobs will appear here
                                 </p>
                               </div>

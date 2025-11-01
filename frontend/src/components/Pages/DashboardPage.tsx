@@ -163,6 +163,23 @@ export function DashboardPage({ onReset, onThemeToggle, onProfileClick, isDark }
         success("Analysis saved to history and database!");
       } catch (dbErr: any) {
         console.error("Failed to save to database", dbErr);
+        // Sometimes the request can error while the server still persisted the doc
+        // (for example a transient connection issue after write). Attempt a quick
+        // verification call to see if the analysis exists on the server before
+        // showing a "database save failed" message to the user.
+        try {
+          const verified = await apiGetAnalysis(String(data.job_id));
+          if (verified && verified.job_id) {
+            // Server has the document despite the earlier error
+            success("Analysis saved to history and database!");
+            return;
+          }
+        } catch (verifyErr) {
+          // verification failed — fall through to local fallback
+          console.warn("Verification check failed after save error", verifyErr);
+        }
+
+        // If we reach here, the server does not have the doc (or verification failed)
         success("Analysis saved to local history (database save failed)");
       }
     } catch (err) {

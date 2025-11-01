@@ -59,9 +59,10 @@ export function HistoryPage({ isDark, onThemeToggle, onGetStarted }: HistoryPage
               savedAt: entry.meta?.savedAt || null,
             })));
             if (err?.status === 401 || err?.status === 403) {
+              // When the user is unauthenticated, surface a hint to sign in
               warning("Loaded local history (sign in to view server-saved analyses)");
             } else {
-              warning("Loaded local history (server unreachable or network error)");
+              // Server/network fallback: keep silent and load local history without a toast
             }
             return;
           }
@@ -151,23 +152,23 @@ export function HistoryPage({ isDark, onThemeToggle, onGetStarted }: HistoryPage
           </div>
 
           {/* History Table */}
-          <div className="rounded-xl border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          <div className="rounded-xl border border-border dark:border-zinc-700 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50 dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-900/50">
-                  <TableHead className="text-gray-700 dark:text-gray-300">S.No</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300">Date</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300">Product Name</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300">Rating</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300">Total Reviews</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300">Top Sentiment</TableHead>
-                  <TableHead className="text-gray-700 dark:text-gray-300 text-center">Action</TableHead>
+                <TableRow className="bg-muted/50 dark:bg-zinc-900/50 hover:bg-muted/50 dark:hover:bg-zinc-900/50">
+                  <TableHead className="text-foreground dark:text-white">S.No</TableHead>
+                  <TableHead className="text-foreground dark:text-white">Date</TableHead>
+                  <TableHead className="text-foreground dark:text-white">Product Name</TableHead>
+                  <TableHead className="text-foreground dark:text-white">Rating</TableHead>
+                  <TableHead className="text-foreground dark:text-white">Total Reviews</TableHead>
+                  <TableHead className="text-foreground dark:text-white">Top Sentiment</TableHead>
+                  <TableHead className="text-foreground dark:text-white text-center">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedHistory.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground dark:text-gray-400">
                       {loading ? "Loading…" : "No results found"}
                     </TableCell>
                   </TableRow>
@@ -227,18 +228,18 @@ export function HistoryPage({ isDark, onThemeToggle, onGetStarted }: HistoryPage
                     return (
                     <TableRow
                       key={String(jobId)}
-                      className="border-b border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+                      className="border-b border-border dark:border-zinc-700 hover:bg-accent/50 dark:hover:bg-zinc-800/50"
                     >
-                      <TableCell className="text-gray-900 dark:text-gray-200 font-medium">{serial}</TableCell>
-                      <TableCell className="text-gray-900 dark:text-gray-200">{dateDisplay}</TableCell>
-                      <TableCell className="text-gray-900 dark:text-gray-200">{pname}</TableCell>
-                      <TableCell className="text-gray-900 dark:text-gray-200">
+                      <TableCell className="text-foreground dark:text-gray-200 font-medium">{serial}</TableCell>
+                      <TableCell className="text-foreground dark:text-gray-200">{dateDisplay}</TableCell>
+                      <TableCell className="text-foreground dark:text-gray-200">{pname}</TableCell>
+                      <TableCell className="text-foreground dark:text-gray-200">
                         <div className="flex items-center gap-1">
                           <span className="text-blue-500">★</span>
                           <span>{displayRating ?? "-"}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-gray-900 dark:text-gray-200">{Number(totalReviews).toLocaleString()}</TableCell>
+                      <TableCell className="text-foreground dark:text-gray-200">{Number(totalReviews).toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge className={getSentimentBadgeClass(String(topSent || ""))}>
                           {String(topSent || "-")}
