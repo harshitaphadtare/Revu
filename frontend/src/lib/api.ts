@@ -14,23 +14,46 @@ async function request<T>(path: string, options: {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options.auth) {
     const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      console.error("API request requires auth but no token found");
+    }
   }
-  const res = await fetch(`${baseURL}${path}`, {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    const msg = data?.detail || data?.message || `Request failed (${res.status})`;
-    const err = new Error(msg) as ApiError;
-    err.status = res.status;
-    err.payload = data;
-    throw err;
+
+  const fullUrl = `${baseURL}${path}`;
+  console.log(`API Request: ${options.method || "GET"} ${fullUrl}`, options.body ? { body: options.body } : '');
+
+  try {
+    const res = await fetch(fullUrl, {
+      method: options.method || "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+
+    console.log(`API Response: ${options.method || "GET"} ${fullUrl}`, { status: res.status, data });
+
+    if (!res.ok) {
+      const msg = data?.detail || data?.message || `Request failed (${res.status})`;
+      const err = new Error(msg) as ApiError;
+      err.status = res.status;
+      err.payload = data;
+      console.error(`API Error: ${options.method || "GET"} ${fullUrl}`, { status: res.status, message: msg, payload: data });
+      throw err;
+    }
+    return data as T;
+  } catch (error) {
+    if (error instanceof Error && 'status' in error) {
+      // Already handled API error, rethrow
+      throw error;
+    }
+    // Network or other error
+    console.error(`Network Error: ${options.method || "GET"} ${fullUrl}`, error);
+    throw new Error(`Network error: Unable to reach ${baseURL}. Is the backend running?`);
   }
-  return data as T;
 }
 
 export type TokenResponse = {
@@ -77,6 +100,7 @@ export type ScrapeStatusResponse = {
   result?: any;
   count?: number | null;
   product?: any;
+  analysis?: any;
   error?: string | null;
 };
 export type CancelResponse = { job_id: string; cancel_requested: boolean };
@@ -101,4 +125,29 @@ export async function apiLockStatus() {
 // ---- Analyze API ----
 export async function apiAnalyze(body: any) {
   return request<any>(`/analyze/`, { method: "POST", body });
+}
+
+// ---- Analysis Store API ----
+export async function apiSaveAnalysis(payload: {
+  job_id: string;
+  url: string;
+  product: any;
+  reviews: any[];
+  analysis: any;
+}) {
+  return request<{ ok: boolean; job_id: string }>(`/analysis/`, { method: "POST", body: payload, auth: true });
+}
+
+export async function apiGetAnalysis(jobId: string) {
+  return request<any>(`/analysis/${encodeURIComponent(jobId)}`, { method: "GET", auth: true });
+}
+
+// Fetch all saved analyses (history)
+export async function apiGetAllAnalyses() {
+  return request<any[]>(`/analysis/`, { method: "GET", auth: true });
+}
+
+// Delete a saved analysis by job id
+export async function apiDeleteAnalysis(jobId: string) {
+  return request<{ ok: boolean }>(`/analysis/${encodeURIComponent(jobId)}`, { method: "DELETE", auth: true });
 }

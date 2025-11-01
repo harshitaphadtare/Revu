@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 import redis
 from celery.result import AsyncResult
 from app.routes.auth import get_current_user
+from app.db.mongodb import get_db
+from datetime import timezone
 from app.schemas.user import UserPublic
 
 router = APIRouter(prefix="", tags=["Fetch Review Job"])
@@ -16,31 +18,54 @@ LOCK_TTL = 60 * 60
 TASK_META_KEY = "revu:task:{job_id}:meta"
 TASK_RESULT_KEY = "revu:task:{job_id}:result"
 TASK_CANCEL_KEY = "revu:task:{job_id}:cancel"
+# Configurable per-user daily limit (default 3)
+DAILY_SCRAPE_LIMIT = 3
+try:
+    DAILY_SCRAPE_LIMIT = int(os.getenv("DAILY_SCRAPE_LIMIT", "3"))
+except Exception:
+    DAILY_SCRAPE_LIMIT = 3
 
 class StartScrapeRequest(BaseModel):
     url: HttpUrl
 
 @router.post("/start-scrape")
 def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends(get_current_user)):
-    # Per-user daily rate limiting (5/day)
-    try:
-        user_id = current_user.id
-        now = datetime.now(timezone.utc)
-        day_key = now.strftime("%Y%m%d")
-        rate_key = f"revu:rate:{user_id}:{day_key}"
-        # Increment atomically and set TTL to end-of-day on first use
-        new_count = redis_client.incr(rate_key)
-        if new_count == 1:
-            # seconds until midnight UTC
-            tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            ttl = int((tomorrow - now).total_seconds())
-            redis_client.expire(rate_key, ttl)
-        if new_count > 5:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Daily limit reached (5 scrapes). Try again tomorrow.")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        # If Redis is unavailable, do not block; proceed without rate limiting
+    # Per-user daily rate limiting (default configurable via DAILY_SCRAPE_LIMIT).
+    # If DAILY_SCRAPE_LIMIT <= 0, rate limiting is disabled for testing.
+    if DAILY_SCRAPE_LIMIT and int(DAILY_SCRAPE_LIMIT) > 0:
+        try:
+            user_id = current_user.id
+            now = datetime.now(timezone.utc)
+            day_key = now.strftime("%Y%m%d")
+            rate_key = f"revu:rate:{user_id}:{day_key}"
+            # Increment atomically and set TTL to end-of-day on first use
+            new_count = redis_client.incr(rate_key)
+            # Ensure TTL is set even if the key existed previously without expiry
+            ttl_remaining = None
+            try:
+                ttl_remaining = redis_client.ttl(rate_key)
+            except Exception:
+                ttl_remaining = None
+            if new_count == 1 or (ttl_remaining is not None and ttl_remaining < 0):
+                # seconds until midnight UTC
+                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                ttl = int((tomorrow - now).total_seconds())
+                try:
+                    redis_client.expire(rate_key, ttl)
+                except Exception:
+                    pass
+            if new_count > DAILY_SCRAPE_LIMIT:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Daily limit reached ({DAILY_SCRAPE_LIMIT} scrapes). Try again tomorrow.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # If Redis is unavailable, do not block; proceed without rate limiting
+            pass
+    else:
+        # Rate limiting disabled (DAILY_SCRAPE_LIMIT <= 0)
         pass
 
     locked = redis_client.set(LOCK_KEY, "1", nx=True, ex=LOCK_TTL)
@@ -55,6 +80,12 @@ def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends
     try:
         task = celery_app.send_task("run_scraper_task", args=[str(payload.url)])
         redis_client.set(f"{LOCK_KEY}:task", task.id, ex=LOCK_TTL)
+        # Record job owner + url to enrich DB persistence later
+        try:
+            redis_client.set(f"revu:task:{task.id}:owner", str(current_user.id), ex=LOCK_TTL)
+            redis_client.set(f"revu:task:{task.id}:url", str(payload.url), ex=LOCK_TTL)
+        except Exception:
+            pass
         return {"job_id": task.id}
     except Exception as exc:
         redis_client.delete(LOCK_KEY)
@@ -62,7 +93,7 @@ def start_scrape(payload: StartScrapeRequest, current_user: UserPublic = Depends
         raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {exc}")
 
 @router.get("/scrape-status/{job_id}")
-def scrape_status(job_id: str):
+async def scrape_status(job_id: str):
     try:
         meta_raw = redis_client.get(TASK_META_KEY.format(job_id=job_id))
     except Exception as exc:
@@ -83,6 +114,50 @@ def scrape_status(job_id: str):
                 result = json.loads(result_raw) if result_raw else None
             except Exception:
                 result = None
+            # Best-effort persistence of raw scraped reviews and analysis into MongoDB
+            try:
+                if result:
+                    db = await get_db()
+                    now = datetime.now(timezone.utc).isoformat()
+                    owner = redis_client.get(f"revu:task:{job_id}:owner")
+                    src_url = redis_client.get(f"revu:task:{job_id}:url")
+                    # Save raw reviews
+                    doc = {
+                        "_id": job_id,
+                        "job_id": job_id,
+                        "url": src_url,
+                        "user_id": owner,
+                        "product": result.get("product"),
+                        "reviews": result.get("reviews"),
+                        "count": result.get("count"),
+                        "updatedAt": now,
+                    }
+                    await db["reviews"].update_one(
+                        {"_id": job_id},
+                        {"$set": doc, "$setOnInsert": {"createdAt": now}},
+                        upsert=True,
+                    )
+                    # Save analysis if present
+                    analysis = result.get("analysis")
+                    if analysis:
+                        doc_a = {
+                            "_id": job_id,
+                            "job_id": job_id,
+                            "url": src_url,
+                            "user_id": owner,
+                            "product": result.get("product"),
+                            "reviews": analysis.get("reviews") or [],
+                            "analysis": analysis,
+                            "updatedAt": now,
+                        }
+                        await db["analyses"].update_one(
+                            {"_id": job_id},
+                            {"$set": doc_a, "$setOnInsert": {"createdAt": now}},
+                            upsert=True,
+                        )
+            except Exception:
+                # Non-fatal: if DB is unavailable, continue serving the response
+                pass
             try:
                 redis_client.delete(LOCK_KEY)
                 redis_client.delete(f"{LOCK_KEY}:task")
@@ -92,9 +167,10 @@ def scrape_status(job_id: str):
                 "job_id": job_id,
                 "state": "SUCCESS",
                 "progress": 100,
-                "result": result.get("reviews") if result else None,
+                "result": result if result else None,
                 "count": result.get("count") if result else None,
                 "product": result.get("product") if result else None,
+                "analysis": result.get("analysis") if result else None,
                 "error": None,
             }
         if state == "PROGRESS":
@@ -172,10 +248,52 @@ def scrape_status(job_id: str):
     if state == "SUCCESS" and isinstance(info, dict):
         payload.update({
             "progress": 100,
-            "result": info.get("reviews"),
+            "result": info,
             "count": info.get("count"),
             "product": info.get("product"),
+            "analysis": info.get("analysis"),
         })
+        # Persist to DB as well in fallback path
+        try:
+            db = await get_db()
+            now = datetime.now(timezone.utc).isoformat()
+            owner = redis_client.get(f"revu:task:{job_id}:owner")
+            src_url = redis_client.get(f"revu:task:{job_id}:url")
+            # Save raw reviews
+            doc = {
+                "_id": job_id,
+                "job_id": job_id,
+                "url": src_url,
+                "user_id": owner,
+                "product": info.get("product"),
+                "reviews": info.get("reviews"),
+                "count": info.get("count"),
+                "updatedAt": now,
+            }
+            await db["reviews"].update_one(
+                {"_id": job_id},
+                {"$set": doc, "$setOnInsert": {"createdAt": now}},
+                upsert=True,
+            )
+            # Save analysis if present
+            if info.get("analysis"):
+                doc_a = {
+                    "_id": job_id,
+                    "job_id": job_id,
+                    "url": src_url,
+                    "user_id": owner,
+                    "product": info.get("product"),
+                    "reviews": (info.get("analysis") or {}).get("reviews") or [],
+                    "analysis": info.get("analysis"),
+                    "updatedAt": now,
+                }
+                await db["analyses"].update_one(
+                    {"_id": job_id},
+                    {"$set": doc_a, "$setOnInsert": {"createdAt": now}},
+                    upsert=True,
+                )
+        except Exception:
+            pass
     elif state == "FAILURE":
         payload.update({
             "progress": info.get("progress", 0) if isinstance(info, dict) else 0,

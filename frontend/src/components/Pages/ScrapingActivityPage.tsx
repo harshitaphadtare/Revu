@@ -2,8 +2,24 @@ import { useState, useEffect, useRef } from "react";
 import { X, Trash2, Eye } from "lucide-react";
 import { ProgressRing } from "@/components/utils/ProgressRing";
 import { useToast } from "@/hooks/useToast";
-import { apiScrapeStatus, apiCancelScrape, apiStartScrape, apiLockStatus, type ScrapeStatusResponse } from "@/lib/api";
+import { apiScrapeStatus, apiCancelScrape, apiStartScrape, apiLockStatus, apiAnalyze, apiSaveAnalysis, type ScrapeStatusResponse } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
+
+// Helper: convert hex color ("#rrggbb") to rgba() with given alpha
+const hexToRgba = (hex?: string, alpha = 1) => {
+  if (!hex) return `rgba(0,0,0,${alpha})`;
+  const cleaned = hex.replace('#','');
+  if (cleaned.length === 3) {
+    const r = parseInt(cleaned[0] + cleaned[0], 16);
+    const g = parseInt(cleaned[1] + cleaned[1], 16);
+    const b = parseInt(cleaned[2] + cleaned[2], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  const r = parseInt(cleaned.slice(0,2), 16);
+  const g = parseInt(cleaned.slice(2,4), 16);
+  const b = parseInt(cleaned.slice(4,6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
 
 
 interface ScrapeJob {
@@ -44,6 +60,38 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
     setQueuedJobs(mapped);
   };
 
+  // Load completed jobs from pending view storage (unviewed completed jobs)
+  const loadCompletedJobs = () => {
+    try {
+      const pending = JSON.parse(localStorage.getItem("revu:pendingView") || "[]");
+      const completed: ScrapeJob[] = pending.map((entry: any) => ({
+        id: entry.job_id,
+        productName: (entry.product && (entry.product.name || entry.product.title)) || "Product",
+        productLink: entry.url || "",
+        status: "completed" as const,
+      }));
+      setCompletedJobs(completed);
+    } catch (err) {
+      console.warn("Failed to load completed jobs from pending view", err);
+      setCompletedJobs([]);
+    }
+  };
+
+  // Return a cleaned/truncated URL for display (hostname + path), with full URL available via title
+  const cleanUrl = (raw?: string, maxLen = 80) => {
+    if (!raw) return "";
+    try {
+      const u = new URL(raw);
+      const display = `${u.hostname}${u.pathname}${u.search || ""}`;
+      if (display.length > maxLen) return display.slice(0, maxLen - 1) + "…";
+      return display;
+    } catch (e) {
+      // not a valid URL; fall back to raw string truncated
+      if (raw.length > maxLen) return raw.slice(0, maxLen - 1) + "…";
+      return raw;
+    }
+  };
+
   // Start next queued scrape after a brief pause and when lock is free
   const startNextIfPossible = async (delayMs = 8000) => {
     if (startNextTimer.current) return; // avoid multiple timers
@@ -74,6 +122,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
         loadQueued();
         info("Starting next queued scrape...");
       } catch (e: any) {
+        console.error("startNextIfPossible: failed to start next scrape", e);
         warning(e?.message || "Failed to start next scrape. Will retry shortly.");
         // Try again later
         startNextIfPossible(10000);
@@ -84,65 +133,185 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
   // Seed from last started job, load queue, and begin polling
   useEffect(() => {
     loadQueued();
+    loadCompletedJobs();
     const lastJobId = localStorage.getItem("revu:lastJobId");
     const lastURL = localStorage.getItem("revu:lastURL") || "";
+
+    // Check if this job is already completed (in pendingView or history)
+    if (lastJobId) {
+      const pending = JSON.parse(localStorage.getItem("revu:pendingView") || "[]");
+      const history = JSON.parse(localStorage.getItem("revu:history") || "[]");
+      const isCompleted = [...pending, ...history].some((entry: any) => entry.job_id === lastJobId);
+
+      if (isCompleted) {
+        // Job is already completed, clear it from active
+        localStorage.removeItem("revu:lastJobId");
+        localStorage.removeItem("revu:lastURL");
+        startNextIfPossible(500);
+        return;
+      }
+    }
+
     if (!lastJobId) {
       // No active job; if queue exists, attempt to start immediately (after lock clears)
       startNextIfPossible(500);
       return;
     }
 
-    // Initialize an active job placeholder so UI shows immediately
+    // Verify with backend before showing an active-job placeholder to avoid stale local pointers
     if (!activeJob) {
-      const started = new Date().toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-      setActiveJob({
-        id: lastJobId,
-        productName: lastURL ? new URL(lastURL).hostname : "Product",
-        productLink: lastURL,
-        status: "processing",
-        Progress: 0,
-        statusText: "Queued",
-        dateStarted: started,
-      });
+      (async () => {
+        try {
+          const res: ScrapeStatusResponse = await apiScrapeStatus(lastJobId as string);
+          const state = (res.state || "").toUpperCase();
+
+          // Handle terminal states - job is done
+          if (state === "SUCCESS" || state === "FAILURE" || state === "REVOKED") {
+            localStorage.removeItem("revu:lastJobId");
+            localStorage.removeItem("revu:lastURL");
+            startNextIfPossible(500);
+            return;
+          }
+
+          // Handle active states - show the job (PROGRESS, PENDING, QUEUED, STARTED, etc.)
+          if (state === "PROGRESS" || state === "PENDING" || state === "QUEUED" || state === "STARTED") {
+            const started = new Date().toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+            setActiveJob({
+              id: lastJobId,
+              productName: (res.product && (res.product.name || res.product.title)) || (lastURL ? new URL(lastURL).hostname : "Product"),
+              productLink: lastURL,
+              status: "processing",
+              Progress: Number(res.progress ?? 0),
+              statusText: state === "PROGRESS" ? "Processing..." : "Queued",
+              dateStarted: started,
+            });
+          } else if (state) {
+            // Unknown non-empty state - show it anyway but log a warning
+            console.warn(`Unknown job state: ${state}, showing job anyway`);
+            const started = new Date().toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+            setActiveJob({
+              id: lastJobId,
+              productName: (res.product && (res.product.name || res.product.title)) || (lastURL ? new URL(lastURL).hostname : "Product"),
+              productLink: lastURL,
+              status: "processing",
+              Progress: Number(res.progress ?? 0),
+              statusText: "Processing...",
+              dateStarted: started,
+            });
+          } else {
+            // Empty state - likely job doesn't exist, clear it
+            localStorage.removeItem("revu:lastJobId");
+            localStorage.removeItem("revu:lastURL");
+            startNextIfPossible(500);
+          }
+        } catch (err) {
+          // If backend check fails (transient error), fall back to showing a placeholder so the UI remains responsive.
+          const started = new Date().toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+          setActiveJob({
+            id: lastJobId,
+            productName: lastURL ? new URL(lastURL).hostname : "Product",
+            productLink: lastURL,
+            status: "processing",
+            Progress: 0,
+            statusText: "Queued",
+            dateStarted: started,
+          });
+        }
+      })();
     }
 
     let cancelled = false;
     let interval: any;
+    let failureCount = 0; // Track consecutive failures
 
     const poll = async () => {
       try {
         const res: ScrapeStatusResponse = await apiScrapeStatus(lastJobId);
         if (cancelled) return;
+
+        // Reset failure count on successful API call
+        failureCount = 0;
+
         const state = (res.state || "").toUpperCase();
-        if (state === "PROGRESS") {
+
+        // Handle active states - PROGRESS, PENDING, QUEUED, STARTED
+        if (state === "PROGRESS" || state === "PENDING" || state === "QUEUED" || state === "STARTED") {
           setActiveJob((prev) =>
             prev
               ? {
                   ...prev,
                   Progress: Math.max(0, Math.min(100, Number(res.progress ?? 0))),
-                  statusText: "Processing...",
+                  statusText: state === "PROGRESS" ? "Processing..." : "Queued",
                 }
               : prev
           );
-        } else if (state === "PENDING") {
-          setActiveJob((prev) => (prev ? { ...prev, Progress: 0, statusText: "Queued" } : prev));
         } else if (state === "SUCCESS") {
-          setCompletedJobs((list) => {
-            // Add completed job summary
-            const done: ScrapeJob = {
-              id: res.job_id,
-              productName:
-                (res.product && (res.product.name || res.product.title)) ||
-                (activeJob?.productName || "Product"),
-              productLink: activeJob?.productLink || "",
-              status: "completed",
+          // build a completed job summary for UI
+          const done: ScrapeJob = {
+            id: res.job_id,
+            productName: (res.product && (res.product.name || res.product.title)) || (activeJob?.productName || "Product"),
+            productLink: activeJob?.productLink || "",
+            status: "completed",
+          };
+
+          // Save to pending view (unviewed completed jobs) - NOT to history yet
+          try {
+            const pendingKey = "revu:pendingView";
+            const existing = JSON.parse(localStorage.getItem(pendingKey) || "[]");
+            const entry = {
+              job_id: res.job_id,
+              url: activeJob?.productLink || localStorage.getItem("revu:lastURL") || "",
+              product: res.product || {},
+              reviews: (res.result && Array.isArray(res.result)) ? res.result : (res.result?.reviews || []),
+              analysis: (res.analysis ? res.analysis : (res.result?.analysis || undefined)),
+              meta: {
+                state: res.state,
+                progress: res.progress,
+                startedAt: activeJob?.dateStarted || null,
+                finishedAt: new Date().toISOString(),
+              },
             };
-            return [done, ...list];
-          });
+            existing.unshift(entry);
+            localStorage.setItem(pendingKey, JSON.stringify(existing));
+            // also keep a pointer to the last result for quick access
+            localStorage.setItem("revu:lastResult", JSON.stringify(entry));
+            // If backend didn't return analysis (older server), fallback to compute locally
+            // Note: We DON'T save to database here - user must click "Save Data" button
+            if (!entry.analysis) {
+              try {
+                const reviewsForAnalysis = entry.reviews.map((r: any) => ({
+                  review_text: r.review_text,
+                  rating: r.rating,
+                  review_date: r.review_date,
+                }));
+                const analysis = await apiAnalyze({ reviews: reviewsForAnalysis });
+                // update local entry with analysis, but don't save to database yet
+                entry.analysis = analysis;
+                localStorage.setItem(pendingKey, JSON.stringify([entry, ...existing.slice(1)]));
+                localStorage.setItem("revu:lastResult", JSON.stringify(entry));
+              } catch (persistErr) {
+                console.warn("Analysis computation failed", persistErr);
+              }
+            }
+          } catch (err) {
+            // ignore storage errors
+            console.warn("Failed to persist to pending view", err);
+          }
+
+          // Reload completed jobs from localStorage to stay in sync
+          loadCompletedJobs();
           setActiveJob(null);
           success("Scrape completed.");
           // clear lastJobId so page doesn't keep polling a finished job
@@ -160,7 +329,19 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
           startNextIfPossible(8000);
         }
       } catch (e: any) {
-        info(e?.message || "Unable to fetch scrape status.");
+        failureCount++;
+        console.warn(`Failed to fetch scrape status (attempt ${failureCount}):`, e?.message || e);
+
+        // After 3 consecutive failures, assume the job is gone/invalid
+        if (failureCount >= 3) {
+          info("Unable to fetch scrape status. Job may no longer exist.");
+          setActiveJob(null);
+          localStorage.removeItem("revu:lastJobId");
+          localStorage.removeItem("revu:lastURL");
+          clearInterval(interval);
+          // Try to start next from queue if any
+          startNextIfPossible(3000);
+        }
       }
     };
 
@@ -185,7 +366,16 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
       // detect REVOKED and clear UI accordingly.
       setActiveJob((prev) => (prev ? { ...prev, statusText: "Cancelling..." } : prev));
     } catch (e: any) {
-      info(e?.message || "Failed to cancel job");
+      const errorMsg = e?.message || "Failed to cancel job";
+      info(errorMsg);
+
+      // If the error indicates the job doesn't exist, clear it immediately
+      if (errorMsg.toLowerCase().includes("not found") || errorMsg.toLowerCase().includes("does not exist")) {
+        setActiveJob(null);
+        localStorage.removeItem("revu:lastJobId");
+        localStorage.removeItem("revu:lastURL");
+        info("Job no longer exists. Cleared from active jobs.");
+      }
     }
   };
 
@@ -195,10 +385,30 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
     loadQueued();
   };
 
-  // Keep queue UI in sync if other parts of the app modify localStorage
+  // Handle viewing a completed job - remove from pending and navigate to dashboard
+  const handleViewJob = (jobId: string) => {
+    try {
+      const pendingKey = "revu:pendingView";
+      const pending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
+      // Remove this job from pending view
+      const updated = pending.filter((entry: any) => entry.job_id !== jobId);
+      localStorage.setItem(pendingKey, JSON.stringify(updated));
+      // Reload completed jobs to reflect removal
+      loadCompletedJobs();
+      // Navigate to dashboard to view the job
+      navigate(`/dashboard/${jobId}`);
+    } catch (err) {
+      console.warn("Failed to remove from pending view", err);
+      // Still navigate even if removal fails
+      navigate(`/dashboard/${jobId}`);
+    }
+  };
+
+  // Keep queue and completed jobs UI in sync if other parts of the app modify localStorage
   useEffect(() => {
     const onStorage = (ev: StorageEvent) => {
       if (ev.key === "revu:scrapeQueue") loadQueued();
+      if (ev.key === "revu:pendingView") loadCompletedJobs();
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -207,76 +417,146 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
   // derive a human-friendly status and color classes from progress percentage
   const getStatusFromProgress = (p?: number) => {
     const prog = typeof p === "number" ? p : 0;
+
+    // Complete (100%)
     if (prog >= 100) {
       return {
-        label: "Complete",
-        bgClass: "bg-green-50 dark:bg-emerald-900/20",
-        borderClass: "border-green-200 dark:border-emerald-700/40",
-        textClass: "text-green-700 dark:text-emerald-200",
-        dotClass: "bg-green-500 dark:bg-emerald-400 animate-pulse",
-        useBreath: false,
-      };
-    }
-    if (prog >= 81) {
-      return {
-        label: "Summarizing results...",
-        bgClass: "bg-violet-50 dark:bg-indigo-900/20",
-        borderClass: "border-violet-200 dark:border-indigo-800/40",
-        textClass: "text-indigo-700 dark:text-indigo-200",
-        dotClass: "bg-indigo-500 dark:bg-indigo-400 animate-pulse",
-        useBreath: false,
-      };
-    }
-    if (prog >= 61) {
-      return {
-        label: "Analyzing sentiments...",
-        // Soft purple gradient strip in light; deep subtle glow in dark
-        bgClass: "bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/30 dark:via-indigo-900/20 dark:to-transparent",
-        borderClass: "border-violet-200 dark:border-white/10",
-        textClass: "text-indigo-700 dark:text-white",
-        dotClass: "breathing-dot",
+        label: "Complete!",
+        bgClass: "bg-emerald-50 dark:bg-emerald-900/20",
+        borderClass: "border-emerald-300 dark:border-emerald-700/40",
+        textClass: "text-emerald-700 dark:text-emerald-300",
+        dotColor: "#10b981", // emerald-500
         useBreath: true,
       };
     }
-    if (prog >= 31) {
+
+    // Creating summary (81-99%)
+    if (prog >= 81) {
       return {
-        label: "Preprocessing data...",
+        label: "Creating summary...",
+        bgClass: "bg-indigo-50 dark:bg-indigo-900/20",
+        borderClass: "border-indigo-300 dark:border-indigo-700/40",
+        textClass: "text-indigo-700 dark:text-indigo-300",
+        dotColor: "#6366f1", // indigo-500
+        useBreath: true,
+      };
+    }
+
+    // Extracting topics (61-80%)
+    if (prog >= 61) {
+      return {
+        label: "Extracting topics...",
+        bgClass: "bg-violet-50 dark:bg-violet-900/20",
+        borderClass: "border-violet-300 dark:border-violet-700/40",
+        textClass: "text-violet-700 dark:text-violet-300",
+        dotColor: "#8b5cf6", // violet-500
+        useBreath: true,
+      };
+    }
+
+    // Analyzing sentiments (41-60%)
+    if (prog >= 41) {
+      return {
+        label: "Analyzing sentiments...",
+        bgClass: "bg-purple-50 dark:bg-purple-900/20",
+        borderClass: "border-purple-300 dark:border-purple-700/40",
+        textClass: "text-purple-700 dark:text-purple-300",
+        dotColor: "#a855f7", // purple-500
+        useBreath: true,
+      };
+    }
+
+    // Preprocessing (21-40%)
+    if (prog >= 21) {
+      return {
+        label: "Preprocessing...",
+        bgClass: "bg-cyan-50 dark:bg-cyan-900/20",
+        borderClass: "border-cyan-300 dark:border-cyan-700/40",
+        textClass: "text-cyan-700 dark:text-cyan-300",
+        dotColor: "#06b6d4", // cyan-500
+        useBreath: true,
+      };
+    }
+
+    // Scraping reviews (1-20%)
+    if (prog >= 1) {
+      return {
+        label: "Scraping reviews...",
         bgClass: "bg-blue-50 dark:bg-blue-900/20",
-        borderClass: "border-blue-200 dark:border-blue-800/40",
-        textClass: "text-blue-700 dark:text-blue-200",
-        dotClass: "bg-blue-500 dark:bg-blue-400 animate-pulse",
-        useBreath: false,
+        borderClass: "border-blue-300 dark:border-blue-700/40",
+        textClass: "text-blue-700 dark:text-blue-300",
+        dotColor: "#3b82f6", // blue-500
+        useBreath: true,
       };
     }
-    if (prog >= 11) {
-      return {
-        label: "Fetching data...",
-        bgClass: "bg-gray-50 dark:bg-zinc-900/40",
-        borderClass: "border-gray-200 dark:border-white/10",
-        textClass: "text-gray-700 dark:text-gray-300",
-        dotClass: "bg-gray-300 dark:bg-zinc-600 animate-pulse",
-        useBreath: false,
-      };
-    }
+
+    // Queued (0%)
     return {
       label: "Queued",
       bgClass: "bg-gray-50 dark:bg-zinc-900/40",
-      borderClass: "border-gray-200 dark:border-white/10",
+      borderClass: "border-gray-300 dark:border-zinc-700/40",
       textClass: "text-gray-700 dark:text-gray-300",
-      dotClass: "bg-gray-300 dark:bg-zinc-600 animate-pulse",
-      useBreath: false,
+      dotColor: "#6b7280", // gray-500
+      useBreath: true,
     };
   };
 
   return (
     <div className={isDark ? "dark" : ""}>
   <div className="min-h-screen bg-gray-50 dark:bg-black">
-        {/* breathing animation styles (scoped-ish) */}
+        {/* breathing animation styles */}
         <style>{`
-          .breathing-ring{position:absolute;width:48px;height:48px;border-radius:9999px;background:radial-gradient(circle at center, rgba(124,58,237,0.18), rgba(99,102,241,0.08), transparent);animation:breath 2000ms ease-in-out infinite;display:block}
-          .breathing-dot{position:relative;width:12px;height:12px;border-radius:9999px; background:linear-gradient(135deg,#7c3aed,#6366f1); box-shadow:0 6px 18px rgba(99,102,241,0.12); display:block}
-          .breathing-dot-sm{position:relative;width:6px;height:6px;border-radius:9999px;background:linear-gradient(135deg,#7c3aed,#6366f1);box-shadow:0 4px 8px rgba(99,102,241,0.08)}
-          @keyframes breath{0%{transform:scale(.92);opacity:.75}50%{transform:scale(1.05);opacity:1}100%{transform:scale(.92);opacity:.75}}
+          .breathing-ring {
+            position: absolute;
+            width: 48px;
+            height: 48px;
+            border-radius: 9999px;
+            animation: breathRing 2.5s ease-in-out infinite;
+            display: block;
+          }
+
+          .breathing-dot {
+            position: relative;
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            animation: breathDot 2.5s ease-in-out infinite;
+            display: block;
+            z-index: 1;
+          }
+
+          .breathing-dot-sm {
+            position: relative;
+            width: 6px;
+            height: 6px;
+            border-radius: 9999px;
+            animation: breathDot 2.5s ease-in-out infinite;
+            display: block;
+            z-index: 1;
+          }
+
+          @keyframes breathRing {
+            0%, 100% {
+              transform: scale(0.85);
+              opacity: 0.3;
+            }
+            50% {
+              transform: scale(1.15);
+              opacity: 0.6;
+            }
+          }
+
+          @keyframes breathDot {
+            0%, 100% {
+              transform: scale(0.95);
+              opacity: 0.85;
+            }
+            50% {
+              transform: scale(1.05);
+              opacity: 1;
+              filter: brightness(1.2);
+            }
+          }
         `}</style>
 
         {/* Main Content */}
@@ -360,41 +640,65 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-gray-600 dark:text-gray-400 mb-0.5" style={{ fontSize: "12px" }}>
-                          Product
+                          Product URL
                         </p>
-                        <p className="text-black dark:text-white truncate" style={{ fontSize: "16px", fontWeight: 600 }}>
-                          {activeJob.productName}
-                        </p>
-                        <p className="text-gray-500 dark:text-gray-400 truncate mt-1" style={{ fontSize: "12px" }}>
-                          {activeJob.productLink}
+                        <p className="text-gray-500 dark:text-gray-400 truncate mt-1" style={{ fontSize: "12px" }} title={activeJob.productLink}>
+                          {cleanUrl(activeJob.productLink)}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Progress Status Banner - gradient strip with animated dot to match mock */}
+                  {/* Progress Status Banner - color-coded stage indicator with breathing animation */}
                       {(() => {
                         const status = getStatusFromProgress(activeJob?.Progress);
                         return (
-                          <div className={`rounded-xl p-4 bg-violet-50 dark:bg-indigo-900/20 ${status.bgClass} ${status.borderClass} border`}
+                          <div
+                            className={`rounded-xl p-4 border`}
+                            style={{
+                              background: hexToRgba(status.dotColor, 0.08),
+                              borderColor: hexToRgba(status.dotColor, 0.18),
+                            }}
                           >
                             <div className="flex items-center gap-3">
                               <div className="relative flex items-center justify-center" style={{ width: 48, height: 48 }}>
                                 {status.useBreath ? (
                                   <>
-                                    <span className="breathing-ring" aria-hidden />
-                                    <span className="breathing-dot" aria-hidden />
+                                    <span
+                                      className="breathing-ring"
+                                      aria-hidden
+                                      style={{
+                                        background: `radial-gradient(circle at center, ${status.dotColor}30, ${status.dotColor}15, transparent)`
+                                      }}
+                                    />
+                                    <span
+                                      className="breathing-dot"
+                                      aria-hidden
+                                      style={{
+                                        background: status.dotColor,
+                                        boxShadow: `0 0 0 0 ${status.dotColor}40`
+                                      }}
+                                    />
                                   </>
                                 ) : (
-                                  <span className={`${status.dotClass} rounded-full w-3.5 h-3.5`} aria-hidden />
+                                  <span
+                                    aria-hidden
+                                    style={{
+                                      display: 'inline-block',
+                                      width: 14,
+                                      height: 14,
+                                      borderRadius: 9999,
+                                      background: status.dotColor
+                                    }}
+                                  />
                                 )}
                               </div>
                               <div className="flex-1">
                                 <p className="text-gray-600 dark:text-gray-400 mb-0.5" style={{ fontSize: "12px" }}>
                                   Current Status
                                 </p>
-                                <p className={`${status.textClass}`} style={{ fontSize: "15px", fontWeight: 600 }}>
-                                  {activeJob.statusText || status.label}
+                                <p style={{ fontSize: "15px", fontWeight: 600, color: status.dotColor }}>
+                                  {status.label}
                                 </p>
                               </div>
                             </div>
@@ -504,29 +808,59 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                           </td>
                           <td className="py-4 px-4">
                             <div className="max-w-xs">
-                              <p className="text-gray-900 dark:text-white mb-0.5 truncate" style={{ fontSize: "14px", fontWeight: 600 }}>
-                                {activeJob.productName}
-                              </p>
-                              <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }}>
-                                {activeJob.productLink}
-                              </p>
+                              {activeJob.productLink ? (
+                                <a
+                                  href={activeJob.productLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                  style={{ fontSize: "12px", display: "inline-block" }}
+                                  title={activeJob.productLink}
+                                >
+                                  {activeJob.productName || cleanUrl(activeJob.productLink)}
+                                </a>
+                              ) : (
+                                <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={activeJob.productLink}>
+                                  {cleanUrl(activeJob.productLink)}
+                                </p>
+                              )}
                             </div>
                           </td>
                           <td className="py-4 px-4">
                             {(() => {
                               const status = getStatusFromProgress(activeJob?.Progress);
                               return (
-                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 ${status.bgClass} ${status.borderClass} rounded-lg`}>
+                                <div
+                                  className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg`}
+                                  style={{
+                                    background: hexToRgba(status.dotColor, 0.08),
+                                    borderColor: hexToRgba(status.dotColor, 0.18),
+                                  }}
+                                >
                                   {status.useBreath ? (
                                     <div className="relative flex items-center justify-center" style={{ width: 14, height: 14 }}>
-                                      <span className="breathing-ring" aria-hidden />
-                                      <span className="breathing-dot" aria-hidden />
+                                      <span
+                                        className="breathing-ring"
+                                        aria-hidden
+                                        style={{
+                                          width: 24,
+                                          height: 24,
+                                          background: `radial-gradient(circle at center, ${status.dotColor}30, ${status.dotColor}15, transparent)`
+                                        }}
+                                      />
+                                      <span
+                                        className="breathing-dot-sm"
+                                        aria-hidden
+                                        style={{
+                                          background: status.dotColor
+                                        }}
+                                      />
                                     </div>
                                   ) : (
-                                    <div className={`w-1.5 h-1.5 rounded-full ${status.dotClass}`} />
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: status.dotColor }} />
                                   )}
-                                  <span className={`${status.textClass}`} style={{ fontSize: "13px", fontWeight: 600 }}>
-                                    {activeJob.statusText || status.label}
+                                  <span style={{ fontSize: "13px", fontWeight: 600, color: status.dotColor }}>
+                                    {status.label}
                                   </span>
                                 </div>
                               );
@@ -637,12 +971,22 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             </td>
                             <td className="py-4 px-4">
                               <div className="max-w-xs">
-                                <p className="text-gray-900 dark:text-white mb-0.5 truncate" style={{ fontSize: "14px", fontWeight: 600 }}>
-                                  {job.productName}
-                                </p>
-                                <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }}>
-                                  {job.productLink}
-                                </p>
+                                {job.productLink ? (
+                                  <a
+                                    href={job.productLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                    style={{ fontSize: "12px", display: "inline-block" }}
+                                    title={job.productLink}
+                                  >
+                                    {job.productName || cleanUrl(job.productLink)}
+                                  </a>
+                                ) : (
+                                  <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
+                                    {cleanUrl(job.productLink)}
+                                  </p>
+                                )}
                               </div>
                             </td>
                             <td className="py-4 px-4">
@@ -747,12 +1091,22 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                             </td>
                             <td className="py-4 px-4">
                               <div className="max-w-xs">
-                                <p className="text-gray-900 dark:text-white mb-0.5 truncate" style={{ fontSize: "14px", fontWeight: 600 }}>
-                                  {job.productName}
-                                </p>
-                                <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }}>
-                                  {job.productLink}
-                                </p>
+                                {job.productLink ? (
+                                  <a
+                                    href={job.productLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-gray-700 dark:text-gray-200 hover:underline truncate"
+                                    style={{ fontSize: "12px", display: "inline-block" }}
+                                    title={job.productLink}
+                                  >
+                                    {job.productName || cleanUrl(job.productLink)}
+                                  </a>
+                                ) : (
+                                  <p className="text-gray-500 dark:text-gray-400 truncate" style={{ fontSize: "12px" }} title={job.productLink}>
+                                    {cleanUrl(job.productLink)}
+                                  </p>
+                                )}
                               </div>
                             </td>
                             <td className="py-4 px-4">
@@ -767,7 +1121,7 @@ export function ScrapingActivityPage({ isDark, onThemeToggle, onGetStarted }: Sc
                               <button
                                 className="p-2.5 hover:bg-gray-100 dark:hover:bg-zinc-900 rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-white/10 group-hover:scale-110"
                                 title="View details"
-                                onClick={() => navigate("/dashboard")}
+                                onClick={() => handleViewJob(job.id)}
                               >
                                 <Eye className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                               </button>

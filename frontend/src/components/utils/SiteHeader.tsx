@@ -23,12 +23,17 @@ export function SiteHeader({ isDark, onThemeToggle, onGetStarted, isAuthed, onPr
 
   return (
     <header
-      className="relative z-20 border-b"
+      className="sticky top-0 border-b"
       style={{
-        // Dark mode: deep, near-black bar with a subtle radial/linear glow. Light mode keeps the soft translucent bar.
+        // Make header sticky so it remains visible while scrolling
+        position: 'sticky',
+        top: 0,
+        // Ensure the header sits above all other content (use a very high z-index)
+        zIndex: 9999,
+        // Use solid, fully-opaque backgrounds so page content is not visible through the navbar
         background: isDark
-          ? "linear-gradient(180deg, rgba(10,10,10,0.98), rgba(6,6,6,0.98))"
-          : "rgba(250, 250, 250, 0.6)",
+          ? "#0a0a0a"
+          : "#ffffff",
         borderColor: isDark ? "rgba(255,255,255,0.03)" : "rgba(228, 228, 231, 0.5)",
         boxShadow: isDark ? "0 1px 0 rgba(0,0,0,0.6) inset" : undefined,
       }}

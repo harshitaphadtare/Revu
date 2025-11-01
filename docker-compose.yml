@@ -8,10 +8,6 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
-
-volumes:
-  mongo_data:
-
   redis:
     image: redis:7-alpine
     container_name: revu-redis
@@ -29,9 +25,14 @@ volumes:
       - MONGO_DB=${MONGO_DB:-revu}
       - JWT_SECRET=${JWT_SECRET:-change-me}
       - JWT_EXPIRES_MIN=${JWT_EXPIRES_MIN:-60}
+      - DAILY_SCRAPE_LIMIT=${DAILY_SCRAPE_LIMIT:-0}
       - SCRAPER_MAX_REVIEWS=${SCRAPER_MAX_REVIEWS:-300}
+      - SCRAPER_PREFER_PLAYWRIGHT=${SCRAPER_PREFER_PLAYWRIGHT:-1}
       - SUMMARY_BACKEND=${SUMMARY_BACKEND:-gemini}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN}
+      - APIFY_REVIEWS_ACTOR=${APIFY_REVIEWS_ACTOR:-axesso_data/amazon-reviews-scraper}
+      - APIFY_PRODUCT_ACTOR=${APIFY_PRODUCT_ACTOR:-axesso_data/amazon-product-details}
     ports:
       - "8000:8000"
     depends_on:
@@ -46,6 +47,13 @@ volumes:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - SCRAPER_MAX_REVIEWS=${SCRAPER_MAX_REVIEWS:-300}
+      - SCRAPER_PREFER_PLAYWRIGHT=${SCRAPER_PREFER_PLAYWRIGHT:-1}
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN}
+      - APIFY_REVIEWS_ACTOR=${APIFY_REVIEWS_ACTOR:-axesso_data/amazon-reviews-scraper}
+      - APIFY_PRODUCT_ACTOR=${APIFY_PRODUCT_ACTOR:-axesso_data/amazon-product-details}
     depends_on:
       - redis
     command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "--pool=solo"]
+
+volumes:
+  mongo_data:

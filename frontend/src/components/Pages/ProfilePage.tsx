@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Camera, X, User, LogOut, ArrowLeft } from "lucide-react";
+import { Camera, X, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,12 +9,11 @@ import { apiChangePassword, apiMe, apiUpdateProfile, type ApiError } from "@/lib
 import { getUser } from "@/lib/auth";
 
 interface ProfilePageProps {
-  onBack: () => void;
   onLogout: () => void;
   isDark: boolean;
 }
 
-export function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
+export function ProfilePage({ onLogout }: ProfilePageProps) {
   const { success, error, info } = useToast();
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -147,16 +146,7 @@ export function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-8"
         >
-          <div className="flex justify-between items-center">
-            <Button
-              variant="ghost"
-              onClick={onBack}
-              className="rounded-xl text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </div>
+          {/* Back button removed as requested */}
 
           <div className="flex flex-col items-center">
             <motion.div

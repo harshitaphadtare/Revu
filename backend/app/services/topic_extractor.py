@@ -36,6 +36,16 @@ _STOPWORDS = {
 }
 
 
+# Extra domain-agnostic filler words often surfacing in e‑commerce reviews
+_FILLERS_EXTRA = {
+    "its", "it's", "im", "dont", "doesnt", "didnt", "much", "really", "works", "work",
+    "product", "products", "bottle", "item", "items", "thing", "things", "stuff",
+}
+
+# Merge extras
+_STOPWORDS |= _FILLERS_EXTRA
+
+
 def _fallback_keywords(texts: List[str], top_n: int = 10) -> List[str]:
     freq = {}
     token_re = re.compile(r"[A-Za-z][A-Za-z0-9_\-]{2,}")  # words length >=3
@@ -45,7 +55,8 @@ def _fallback_keywords(texts: List[str], top_n: int = 10) -> List[str]:
                 continue
             freq[tok] = freq.get(tok, 0) + 1
     # Sort by frequency desc, then alphabetically for determinism
-    return [w for w, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]]
+    ranked = [w for w, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return ranked[:top_n]
 
 
 def extract_keywords(texts: List[str]) -> List[str]:
@@ -66,7 +77,10 @@ def extract_keywords(texts: List[str]) -> List[str]:
             for kw in keywords:
                 k = kw.lower()
                 counts[k] = counts.get(k, 0) + 1
-            return [w for w, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))][:10]
+            ranked = [w for w, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+            # Filter out stopwords from KeyBERT path as well
+            ranked = [w for w in ranked if w not in _STOPWORDS]
+            return ranked[:10]
         except Exception:
             # Fall through to fallback
             pass
