@@ -42,8 +42,11 @@ export function AuthPage({ onBack, isDark, mode: routeMode }: AuthPageProps) {
         await apiSignup({ name: fullName || undefined, email, password });
         success("Account created!");
       }
-      const redirect = searchParams.get("redirect") || "/";
-      navigate(redirect);
+  const redirect = searchParams.get("redirect");
+  // If redirect points to profile, send user to home instead.
+  // Keep other redirects (e.g., /scraping-activity) working as-is.
+  const target = redirect && !/^\/?profile(\b|\/|\?|#)/i.test(redirect) ? redirect : "/";
+  navigate(target);
     } catch (err: any) {
       setError(err?.message || "Authentication failed");
     } finally {

@@ -36,10 +36,6 @@ jobs:
       - name: Add backend to PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}/backend:${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      - name: Install Playwright browsers (chromium)
-        working-directory: backend
-        run: python -m playwright install chromium
-
       - name: Run backend tests (pytest)
         working-directory: backend
         run: python -m pytest -q

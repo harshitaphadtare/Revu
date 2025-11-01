@@ -37,6 +37,7 @@ temp/
 # Environment files
 .env
 backend/.env
+frontend/.env
 
 # IDE/editor
 .vscode/

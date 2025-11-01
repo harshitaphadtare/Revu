@@ -56,44 +56,60 @@ export default function App() {
   };
 
   const handleAnalyze = async (_url: string) => {
+    console.log("handleAnalyze called with URL:", _url);
+
     if (!isAuthenticated()) {
+      console.log("User not authenticated, redirecting to login");
       info("Please log in to continue analyzing reviews.");
       const redirect = encodeURIComponent("/scraping-activity");
       navigate(`/auth/login?redirect=${redirect}`);
       return;
     }
+
+    console.log("User authenticated, proceeding with scrape");
+
     if (!_url || !_url.startsWith("http")) {
-      // Prefer a warning for missing/invalid URL so it stands out.
+      console.warn("Invalid URL format:", _url);
       warning("Please add an Amazon product URL.");
       return;
     }
-    
+
     // Validate URL contains an Amazon product link
     const urlLower = _url.toLowerCase();
     const isAmazon = urlLower.includes("amazon");
 
     if (!isAmazon) {
+      console.warn("Non-Amazon URL provided:", _url);
       warning("⚠️ Only Amazon product URLs are supported. Please paste a valid Amazon product link.");
       return;
     }
-    
+
+    console.log("URL validated, checking lock status...");
+
     try {
       // If a scrape is already running, queue it instead of erroring out
       const lock = await apiLockStatus();
+      console.log("Lock status:", lock);
+
       if (lock.locked) {
+        console.log("Lock is held, adding to queue");
         const { position } = enqueue(_url);
         warning(`A scraping job is already in progress. Added to queue (position ${position}).`);
         navigate("/scraping-activity");
         return;
       }
 
+      console.log("No lock, starting scrape...");
       const { job_id } = await apiStartScrape({ url: _url });
+      console.log("Scrape started successfully, job_id:", job_id);
+
       localStorage.setItem("revu:lastJobId", job_id);
       localStorage.setItem("revu:lastURL", _url);
       success("Analysis initiated! Redirecting to activity page...");
       navigate("/scraping-activity");
     } catch (err: any) {
-      const msg = String(err?.message || "");
+      console.error("Failed to start scrape:", err);
+      const msg = String(err?.message || err?.payload?.detail || "");
 
       // Queue-on-lock behaviour
       if (/already in progress|busy|locked/i.test(msg)) {
@@ -109,9 +125,8 @@ export default function App() {
         return;
       }
 
-      // Generic fallback for other errors
-      // Use error severity where appropriate
-      info(msg || "Failed to start analysis");
+      // Generic fallback for other errors — surface to console and user
+      warning(msg || "Failed to start analysis (see console)");
     }
   };
 
@@ -155,15 +170,17 @@ export default function App() {
     >
   {/* Global Toaster (top-right) */}
   <Toaster />
-      {/* Global Site Header (shown on every page) */}
-      <SiteHeader
-        isDark={isDark}
-        onThemeToggle={handleThemeToggle}
-        onGetStarted={handleGetStarted}
-        isAuthed={auth}
-        onProfile={handleGoToProfile}
-        onLogout={handleLogout}
-      />
+      {/* Global Site Header (hidden on auth pages: /auth/login, /auth/signup) */}
+      {!location.pathname.startsWith("/auth") && (
+        <SiteHeader
+          isDark={isDark}
+          onThemeToggle={handleThemeToggle}
+          onGetStarted={handleGetStarted}
+          isAuthed={auth}
+          onProfile={handleGoToProfile}
+          onLogout={handleLogout}
+        />
+      )}
       <Routes>
         {/* Home at / and /home */}
         <Route
@@ -224,12 +241,20 @@ export default function App() {
           path="/profile"
           element={
             <ProtectedRoute>
-              <ProfilePage onBack={handleBackToDashboard} onLogout={handleLogout} isDark={isDark} />
+              <ProfilePage onLogout={handleLogout} isDark={isDark} />
             </ProtectedRoute>
           }
         />
         <Route
           path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage onReset={handleReset} onThemeToggle={handleThemeToggle} onProfileClick={handleGoToProfile} isDark={isDark} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/:jobId"
           element={
             <ProtectedRoute>
               <DashboardPage onReset={handleReset} onThemeToggle={handleThemeToggle} onProfileClick={handleGoToProfile} isDark={isDark} />

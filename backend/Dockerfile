@@ -4,40 +4,16 @@ FROM python:3.11-slim
 # Create app directory
 WORKDIR /app
 
-# Copy requirements and install system deps needed by Playwright
-COPY backend/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 
-# Install OS packages required by Playwright's browser engines and common
-# runtime libraries. Keep the list minimal but adequate for Chromium/Firefox/WebKit.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget \
-    gnupg \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libxss1 \
-    libpangocairo-1.0-0 \
-    libgtk-3-0 \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies (includes playwright)
+# Install Python dependencies only (no browsers needed with Apify)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers and required system dependencies in one step.
-# This downloads the browser binaries (Chromium/Firefox/WebKit) used by Playwright.
-RUN python -m playwright install --with-deps || true
-
-# Copy backend source
-COPY backend/ ./
+# Copy backend source (when the Docker build context is the `backend/` folder)
+# If your CI supplies the repository root as the build context and uses this Dockerfile
+# you can instead set the build context to `backend/` in Render. This Dockerfile assumes
+# it is executed with the `backend` directory as the build context.
+COPY . ./
 
 # Environment
 ENV PYTHONUNBUFFERED=1

@@ -1,641 +1,399 @@
-"""Product review scraper.
+"""Apify-backed scraper facade.
 
-Consolidated manual HTML scraper (requests + BeautifulSoup) for Amazon reviews.
-SerpApi integration has been removed from the codebase.
+This module exposes a thin wrapper used by callers in the codebase and
+contains the Apify-based implementation for fetching Amazon reviews and
+product details.
 
-Features:
-- Extract reviewer name, star rating, review date, title, and body
-- Simple pagination via pageNumber until ~max_reviews (default 300)
-- IP protection: user-agent rotation, configurable delays, retry logic
-- Basic error handling for network and parsing issues
-- Progress tracking and cancellation support
+Actor configuration is customizable via env vars:
+- APIFY_REVIEWS_ACTOR (examples: "epctex/amazon-reviews-scraper", "axesso_data/amazon-reviews-scraper")
+
+To be resilient across different actors (which use slightly different input
+schemas), we automatically detect and retry with an alternative payload shape
+if the first attempt fails validation (e.g., "Field input.input is required").
 """
-import os
-import random
+
 import re
-import time
-from typing import List, Optional, Callable, Tuple, Dict, Any
-from urllib.parse import urlparse
+import math
+import json
+from typing import Any, Dict, List, Optional, Tuple
 
-import requests
-from bs4 import BeautifulSoup
+import os
+from dotenv import load_dotenv
+from apify_client import ApifyClient
 
-from app.models.schemas import SingleReview
-
-# Pool of user agents for rotation to avoid detection
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-]
+# SingleReview model is not required in this module; worker handles normalization
 
 
-def get_asin_from_url(url: str) -> Optional[str]:
-    """Extract a 10-character ASIN from an Amazon product URL.
+# Load environment (APIFY_API_TOKEN etc.) if present in a .env file
+load_dotenv()
 
-    Returns the ASIN (string) if found, otherwise None.
+
+def _normalize_price(raw: Optional[Any]) -> Dict[str, Any]:
+    """Normalize a raw price value to a dict with amount (float) and currency.
+
+    Returns { 'raw': original, 'amount': float|None, 'currency': str|None }
     """
+    out = {"raw": raw, "amount": None, "currency": None}
+    if raw is None:
+        return out
+    # If already numeric
     try:
-        m = re.search(r"/(?:dp|gp/product|product-reviews)/([A-Za-z0-9]{10})", url)
-        return m.group(1) if m else None
+        if isinstance(raw, (int, float)):
+            out["amount"] = float(raw)
+            return out
     except Exception:
-        return None
-
-
-def _extract_asin_from_url(url: str) -> Optional[str]:
-    """Wrapper that uses get_asin_from_url helper.
-
-    Keeps a private name for backward compatibility with existing callers in this module.
-    """
-    return get_asin_from_url(url)
-
-
-def _scrape_amazon_reviews_raw(
-    url: str,
-    *,
-    max_reviews: int = 300,
-    session: Optional[requests.Session] = None,
-    timeout: int = 20,
-    pause_seconds: float = 1.0,
-    progress_cb: Optional[Callable[[int], None]] = None,
-    cancel_cb: Optional[Callable[[], None]] = None,
-) -> List[Dict[str, Optional[str]]]:
-    """Scrape reviews from an Amazon product URL using requests + BeautifulSoup.
-
-    Returns a list of dicts with keys: reviewer, rating, date, title, body
-
-    Raises:
-        ValueError: if URL invalid
-        requests.exceptions.RequestException: for network errors
-    """
-    # If the provided URL is not already a reviews page, try to find the
-    # canonical "all reviews" link on the product page and use that as the
-    # base for pagination. This keeps the behavior closer to what a browser
-    # would follow and handles localized domains.
-    def find_reviews_base(prod_url: str, sess: requests.Session) -> Optional[str]:
-        # If URL already looks like a reviews URL, use it
-        if "/product-reviews/" in prod_url or "/reviews/" in prod_url:
-            return prod_url
-
+        pass
+    s = str(raw).strip()
+    out["raw"] = s
+    # Look for currency symbol or code and numeric amount
+    # Examples: "₹1,299.00", "1,299.00", "$19.99", "INR 1,299"
+    # Try to find a currency symbol (non-digit, non-sep) and number
+    m = re.search(r"(?P<currency>[₹$£€]|INR|Rs\.?|USD|EUR|GBP)?\s*(?P<number>[\d,]+(?:[\.,]\d+)?)", s, re.IGNORECASE)
+    if m:
+        num = m.group("number")
         try:
-            headers = {
-                "User-Agent": random.choice(USER_AGENTS),
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-            }
-            r = sess.get(prod_url, headers=headers, timeout=15)
-            r.raise_for_status()
-            s = BeautifulSoup(r.text, "html.parser")
-            # Common anchors pointing to all reviews
-            selectors = [
-                "a[data-hook='see-all-reviews-link-foot']",
-                "a[data-hook='see-all-reviews-link']",
-                "a[href*='/product-reviews/']",
-                "a:has(span#acrCustomerReviewText)",
-            ]
-            for sel in selectors:
-                el = s.select_one(sel)
-                if el and el.get('href'):
-                    href = el.get('href')
-                    # Build absolute URL if necessary
-                    if href.startswith('http'):
-                        return href
-                    parsed = urlparse(prod_url)
-                    base = f"{parsed.scheme}://{parsed.netloc}"
-                    return base + href
-            # Fallback: search for text links that look like "See all reviews"
-            for a in s.find_all('a'):
-                txt = (a.get_text() or '').strip().lower()
-                if 'see all reviews' in txt or 'see all customer reviews' in txt or 'all reviews' == txt:
-                    href = a.get('href')
-                    if href:
-                        if href.startswith('http'):
-                            return href
-                        parsed = urlparse(prod_url)
-                        base = f"{parsed.scheme}://{parsed.netloc}"
-                        return base + href
-            # Last resort: build a canonical product-reviews URL from ASIN if present
-            asin = _extract_asin_from_url(prod_url)
-            if asin:
-                parsed = urlparse(prod_url)
-                # Try locale-aware path first, then fallback
-                base = f"{parsed.scheme}://{parsed.netloc}"
-                candidates = [
-                    f"{base}/product-reviews/{asin}",
-                    f"{base}/-/en/product-reviews/{asin}",
-                ]
-                for c in candidates:
-                    try:
-                        resp = sess.get(c, headers=headers, timeout=10)
-                        if resp.status_code == 200:
-                            return c
-                    except Exception:
-                        pass
+            num = num.replace(",", "")
+            out["amount"] = float(num.replace(" ", ""))
         except Exception:
-            return None
-        return None
+            out["amount"] = None
+        cur = m.group("currency")
+        if cur:
+            cur = cur.replace("rs.", "INR").replace("Rs.", "INR").replace("Rs", "INR")
+            cur = cur.upper().replace("₹", "INR").replace("$", "USD").replace("£", "GBP").replace("€", "EUR")
+            out["currency"] = cur
+        return out
+    # As a last attempt, try to parse any float in the string
+    m2 = re.search(r"([\d,]+(?:[\.,]\d+)?)", s)
+    if m2:
+        num = m2.group(1).replace(",", "")
+        try:
+            out["amount"] = float(num.replace(" ", ""))
+        except Exception:
+            out["amount"] = None
+    return out
 
-    sess = session or requests.Session()
 
-    reviews_base = find_reviews_base(url, sess)
-    if not reviews_base:
-        # If we couldn't find a dedicated reviews page, attempt to use the
-        # product URL directly — some sites render reviews on the product page.
-        reviews_base = url
+def _country_from_domain(domain_code: str) -> str:
+    domain_code = (domain_code or "com").lower()
+    mapping = {
+        "com": "US",
+        "in": "IN",
+        "co.uk": "UK",
+        "ca": "CA",
+        "de": "DE",
+        "fr": "FR",
+        "it": "IT",
+        "es": "ES",
+        "com.br": "BR",
+        "com.au": "AU",
+        "com.mx": "MX",
+        "co.jp": "JP",
+    }
+    return mapping.get(domain_code, "US")
 
-    # Derive a function that composes the paginated reviews URL. Amazon uses
-    # `pageNumber` as a query param on most locales; so append/replace it.
-    def reviews_url(page_num: int) -> str:
-        parsed = urlparse(reviews_base)
-        q = f"reviewerType=all_reviews&sortBy=recent&pageNumber={page_num}"
-        # If reviews_base already has query params, preserve them when possible
-        if parsed.query:
-            # Strip existing pageNumber if present
-            base_q = re.sub(r'pageNumber=\d+', '', parsed.query).strip('&')
-            if base_q:
-                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{base_q}&{q}"
-        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{q}"
 
-    sess = session or requests.Session()
-    
-    results: List[Dict[str, Optional[str]]] = []
-    page = 1
-    consecutive_failures = 0
-    max_consecutive_failures = 3
+def fetch_product_details(asin: str, domain_code: str = "com") -> Dict[str, Any]:
+    """Attempt to fetch product details (name, price) using a product actor.
 
-    while len(results) < max_reviews:
-        # Check for cancellation
-        if cancel_cb:
-            try:
-                cancel_cb()
-            except Exception:
-                raise
-        
-        # Rotate user agent for each request
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            # Avoid br unless brotli is ensured; gzip/deflate are broadly supported
-            "Accept-Encoding": "gzip, deflate",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Referer": url,
-        }
-        
-        url_page = reviews_url(page)
-        
-        # Retry logic with exponential backoff
-        retry_count = 0
-        max_retries = 3
-        backoff_base = 2.0
-        
-        while retry_count < max_retries:
-            try:
-                # Add random delay between requests (1-3 seconds base + jitter)
-                if page > 1 or retry_count > 0:
-                    delay = pause_seconds + random.uniform(0.5, 2.0)
-                    time.sleep(delay)
-                
-                resp = sess.get(url_page, headers=headers, timeout=timeout)
-                resp.raise_for_status()
-                consecutive_failures = 0  # Reset on success
+    Tries a configurable actor via APIFY_PRODUCT_ACTOR, with robust input shapes
+    similar to reviews. Falls back to empty info if unavailable or failing.
+    """
+    token = os.getenv("APIFY_API_TOKEN")
+    if not token:
+        return {"productName": None, "price": None}
+
+    client = ApifyClient(token)
+    product_actor = os.getenv("APIFY_PRODUCT_ACTOR", "axesso_data/amazon-product-details")
+
+    flat_input = {"asin": [asin], "country": _country_from_domain(domain_code)}
+    nested_list_input = {"input": [{"asin": asin, "domainCode": domain_code}]}
+    nested_object_input = {"input": {"input": [{"asin": asin, "domainCode": domain_code}]}}
+
+    attempts: List[Tuple[str, Dict[str, Any]]] = []
+    if product_actor.startswith("axesso") or "/axesso" in product_actor or product_actor.startswith("axesso_data/"):
+        attempts = [("nested_object", nested_object_input), ("nested_list", nested_list_input), ("flat", flat_input)]
+    else:
+        attempts = [("flat", flat_input), ("nested_list", nested_list_input), ("nested_object", nested_object_input)]
+
+    actor = client.actor(product_actor)
+    last_err = None
+    run = None
+    for _, payload in attempts:
+        try:
+            run = actor.call(run_input=payload)
+            break
+        except Exception as e:
+            last_err = e
+            run = None
+    if not run:
+        return {"productName": None, "price": None}
+
+    dataset_id = run.get("defaultDatasetId") or (run.get("output") or {}).get("defaultDatasetId")
+    if not dataset_id:
+        return {"productName": None, "price": None}
+    ds = client.dataset(dataset_id)
+    items = []
+    try:
+        items = ds.list_items().items or []
+    except Exception:
+        items = []
+    if not items:
+        return {"productName": None, "price": None}
+    it = items[0]
+    name = (
+        it.get("productTitle") or it.get("title") or it.get("name") or (it.get("product") or {}).get("title")
+    )
+    price = (
+        it.get("productPrice") or it.get("currentPrice") or it.get("price") or (it.get("product") or {}).get("price")
+    )
+    # Try to extract total review count from the product dataset if present
+    count_reviews = None
+    for k in ("countReviews", "countRatings", "reviewsCount", "reviews_count", "reviewCount", "totalReviews", "reviewsTotal", "review_count", "numReviews", "total_review_count", "count_ratings", "count_reviews"):
+        try:
+            v = it.get(k) if isinstance(it, dict) else None
+            if not v and isinstance(it.get("product"), dict):
+                v = (it.get("product") or {}).get(k)
+            if v:
+                count_reviews = int(v)
                 break
-            except requests.exceptions.RequestException as e:
-                retry_count += 1
-                consecutive_failures += 1
-                
-                if retry_count >= max_retries:
-                    print(f"Failed to fetch page {page} after {max_retries} retries: {e}")
-                    if consecutive_failures >= max_consecutive_failures:
-                        # Too many consecutive failures, stop scraping
-                        print(f"Stopping scrape due to {consecutive_failures} consecutive failures")
-                        return results
-                    break
-                
-                # Exponential backoff
-                backoff = backoff_base ** retry_count + random.uniform(0, 1)
-                print(f"Retry {retry_count}/{max_retries} for page {page}, waiting {backoff:.2f}s")
-                time.sleep(backoff)
-        else:
-            # Failed all retries, skip this page
+        except Exception:
             continue
+    # NOTE: manual HTML scraping of Amazon pages was removed — rely on product actor dataset
+    # The product actor (if available) should provide a price; otherwise leave price as-is (possibly None).
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+    # Normalize price into consistent structure
+    normalized = _normalize_price(price)
+    return {"productName": name, "price": normalized, "countReviews": count_reviews}
 
-        # Detect potential bot-block or unexpected page
-        if soup.select_one("form[action*='captcha']") or "Enter the characters you see" in resp.text:
-            print("Captcha detected, stopping scrape to avoid blocking")
-            break
 
-        review_divs = soup.select("div[data-hook='review']")
-        if not review_divs:
-            # If no reviews found on first page, either wrong domain/path or structure changed
-            if page == 1:
-                print(f"No reviews found on first page for URL {reviews_base}")
-                break
-            # If later pages have none, stop pagination
-            else:
-                print(f"No more reviews found on page {page}, ending pagination")
-                break
+def fetch_amazon_reviews(asin: str, max_reviews: int = 300, domain_code: str = "com") -> Tuple[List[dict], Dict[str, Any]]:
+    token = os.getenv("APIFY_API_TOKEN")
+    if not token:
+        raise ValueError("APIFY_API_TOKEN is not set. Please add it to your .env file.")
 
-        for div in review_divs:
-            # Reviewer name
-            reviewer = None
-            el = div.select_one("span.a-profile-name")
-            if el:
-                reviewer = el.get_text(strip=True)
+    client = ApifyClient(token)
+    # Force or default to the user-preferred actor unless overridden via env
+    reviews_actor = os.getenv("APIFY_REVIEWS_ACTOR", "axesso_data/amazon-reviews-scraper")
 
-            # Rating
-            rating = None
-            star_el = div.select_one("i[data-hook='review-star-rating'] span") or div.select_one(
-                "i.a-icon-star-small span"
-            )
-            if star_el:
-                m = re.search(r"([0-9]+(?:\.[0-9]+)?)", star_el.get_text(strip=True))
-                if m:
-                    rating = m.group(1)
-
-            # Date
-            date = None
-            date_el = div.select_one("span[data-hook='review-date']")
-            if date_el:
-                date = date_el.get_text(strip=True)
-
-            # Title
-            title = None
-            title_el = div.select_one("a[data-hook='review-title'] span") or div.select_one(
-                "a[data-hook='review-title']"
-            )
-            if title_el:
-                title = title_el.get_text(strip=True)
-
-            # Body
-            body = None
-            body_el = div.select_one("span[data-hook='review-body'] span") or div.select_one(
-                "span[data-hook='review-body']"
-            )
-            if body_el:
-                body = body_el.get_text(" ", strip=True)
-
-            results.append(
+    # Prepare multiple known input shapes to maximize compatibility across actors.
+    # Shape A (epctex and similar): flat object with asin list + country.
+    flat_input: Dict[str, Any] = {
+        "asin": [asin],
+        "maxReviews": max_reviews,
+        "country": _country_from_domain(domain_code),
+    }
+    # Shape B1 (axesso variant): nested list under top-level "input" with domainCode and maxPages.
+    nested_list_input: Dict[str, Any] = {
+        "input": [
+            {
+                "asin": asin,
+                "domainCode": domain_code,
+                # Map desired max_reviews to pages (axesso caps to 10 pages, ~10 reviews/page)
+                "maxPages": max(1, min(10, math.ceil((max_reviews or 100) / 10))),
+            }
+        ]
+    }
+    # Shape B2 (axesso variant used by some forks): top-level "input" object that contains an "input" list
+    nested_object_input: Dict[str, Any] = {
+        "input": {
+            "input": [
                 {
-                    "reviewer": reviewer,
-                    "rating": rating,
-                    "date": date,
-                    "title": title,
-                    "body": body,
+                    "asin": asin,
+                    "domainCode": domain_code,
+                    # Map desired max_reviews to pages (axesso caps to 10 pages)
+                    "maxPages": max(1, min(10, math.ceil((max_reviews or 100) / 10))),
                 }
-            )
-
-            if len(results) >= max_reviews:
-                break
-
-        # Update progress based on reviews collected
-        if progress_cb and max_reviews > 0:
-            progress_pct = min(90, int((len(results) / max_reviews) * 80) + 10)
-            try:
-                progress_cb(progress_pct)
-            except Exception:
-                pass
-
-        # Stop if we've reached the target
-        if len(results) >= max_reviews:
-            break
-
-        # Next page
-        page += 1
-
-    return results
-
-
-def _scrape_with_playwright(
-    url: str,
-    *,
-    max_reviews: int = 300,
-    pause_seconds: float = 1.5,
-    progress_cb: Optional[Callable[[int], None]] = None,
-    cancel_cb: Optional[Callable[[], None]] = None,
-) -> List[Dict[str, Optional[str]]]:
-    """Fallback scraper that uses Playwright to render pages when static
-    requests fail (CAPTCHA, heavy JS, or different layout). Playwright is
-    optional — this function will raise ImportError if it's not installed.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-    except Exception as e:
-        raise ImportError("Playwright is not installed or available") from e
-
-    results: List[Dict[str, Optional[str]]] = []
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(user_agent=random.choice(USER_AGENTS))
-        page = context.new_page()
-
-        # If given a product URL, attempt to follow the reviews link same as
-        # the requests-based finder; otherwise use the URL directly.
-        try:
-            page.goto(url, timeout=30000)
-        except Exception:
-            # give up early
-            browser.close()
-            return results
-
-        # Try to click the 'see all reviews' link if present
-        try:
-            # Several selectors — try them in order
-            selectors = [
-                "a[data-hook='see-all-reviews-link-foot']",
-                "a[data-hook='see-all-reviews-link']",
-                "a[href*='/product-reviews/']",
             ]
-            reviews_href = None
-            for sel in selectors:
-                el = page.query_selector(sel)
-                if el:
-                    try:
-                        el.click()
-                        page.wait_for_load_state('networkidle', timeout=10000)
-                        break
-                    except Exception:
-                        href = el.get_attribute('href')
-                        if href:
-                            reviews_href = href
-                            break
-            if reviews_href:
-                # build absolute
-                parsed = urlparse(url)
-                if not reviews_href.startswith('http'):
-                    reviews_href = f"{parsed.scheme}://{parsed.netloc}{reviews_href}"
-                page.goto(reviews_href, timeout=30000)
-        except Exception:
-            pass
+        }
+    }
 
-        page_num = 1
-        while len(results) < max_reviews:
-            if cancel_cb:
+    # Optional extra input provided via env for advanced actor options
+    extra_input_raw = os.getenv("APIFY_REVIEWS_EXTRA_INPUT")
+    if extra_input_raw:
+        try:
+            extra = json.loads(extra_input_raw)
+            if isinstance(extra, dict):
+                # Merge into all shapes to cover either attempt
                 try:
-                    cancel_cb()
+                    flat_input.update(extra)
                 except Exception:
-                    raise
-
-            # Wait a short, jittered amount to mimic a human
-            time.sleep(pause_seconds + random.uniform(0.3, 1.0))
-
-            html = page.content()
-            soup = BeautifulSoup(html, 'html.parser')
-            # Reuse the same selectors as the requests path
-            review_divs = soup.select("div[data-hook='review']")
-            if not review_divs:
-                # If nothing, try alternate selectors
-                review_divs = soup.select("li[data-hook='review']") or soup.select("div[id^='customer_review-']")
-            if not review_divs:
-                break
-
-            for div in review_divs:
-                reviewer = None
-                el = div.select_one("span.a-profile-name")
-                if el:
-                    reviewer = el.get_text(strip=True)
-
-                rating = None
-                star_el = div.select_one("i[data-hook='review-star-rating'] span") or div.select_one("i.a-icon-star-small span")
-                if star_el:
-                    m = re.search(r"([0-9]+(?:\.[0-9]+)?)", star_el.get_text(strip=True))
-                    if m:
-                        rating = m.group(1)
-
-                date = None
-                date_el = div.select_one("span[data-hook='review-date']")
-                if date_el:
-                    date = date_el.get_text(strip=True)
-
-                title = None
-                title_el = div.select_one("a[data-hook='review-title'] span") or div.select_one("a[data-hook='review-title']")
-                if title_el:
-                    title = title_el.get_text(strip=True)
-
-                body = None
-                body_el = div.select_one("span[data-hook='review-body'] span") or div.select_one("span[data-hook='review-body']")
-                if body_el:
-                    body = body_el.get_text(" ", strip=True)
-
-                results.append({"reviewer": reviewer, "rating": rating, "date": date, "title": title, "body": body})
-                if len(results) >= max_reviews:
-                    break
-
-            # Try to navigate to next page using the standard pageNumber param
-            try:
-                page_num += 1
-                parsed = urlparse(page.url)
-                next_q = f"reviewerType=all_reviews&sortBy=recent&pageNumber={page_num}"
-                next_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{next_q}"
-                page.goto(next_url, timeout=30000)
-            except Exception:
-                break
-
-        try:
-            browser.close()
+                    pass
+                # Carefully merge into axesso shapes but preserve computed maxPages unless explicitly provided
+                try:
+                    if "maxPages" in extra:
+                        nested_list_input["input"][0]["maxPages"] = extra["maxPages"]
+                    else:
+                        for k, v in extra.items():
+                            if k != "maxPages":
+                                nested_list_input["input"][0][k] = v
+                except Exception:
+                    pass
+                try:
+                    if "maxPages" in extra:
+                        nested_object_input["input"]["input"][0]["maxPages"] = extra["maxPages"]
+                    else:
+                        for k, v in extra.items():
+                            if k != "maxPages":
+                                nested_object_input["input"]["input"][0][k] = v
+                except Exception:
+                    pass
         except Exception:
+            # Ignore malformed extra JSON
             pass
 
-    return results
+    actor = client.actor(reviews_actor)
 
+    # Choose first attempt based on actor hint, then retry with the other on validation failure
+    attempts: List[Tuple[str, Dict[str, Any]]] = []
+    if reviews_actor.startswith("axesso") or "/axesso" in reviews_actor or reviews_actor.startswith("axesso_data/"):
+        # Try the most strict/likely axesso shapes first, then fall back
+        attempts = [
+            ("nested_object", nested_object_input),
+            ("nested_list", nested_list_input),
+            ("flat", flat_input),
+        ]
+    else:
+        attempts = [
+            ("flat", flat_input),
+            ("nested_list", nested_list_input),
+            ("nested_object", nested_object_input),
+        ]
 
-def scrape_amazon_reviews(
-    url: str,
-    max_pages: int = 2,
-    *,
-    max_reviews: Optional[int] = None,
-    progress_cb: Optional[Callable[[int], None]] = None,
-    cancel_cb: Optional[Callable[[], None]] = None,
-) -> Tuple[Dict[str, Any], List[SingleReview]]:
-    """Fetch Amazon reviews using the manual HTML scraper.
-
-    Args:
-        url: Amazon product URL
-        max_reviews: Maximum number of reviews to fetch (default from env, capped at 300)
-        progress_cb: Optional callback for progress updates
-        cancel_cb: Optional callback to check for cancellation
-
-    Returns:
-        Tuple of (product_metadata, reviews_list)
-
-    Raises:
-        ValueError: If no ASIN found in URL or no reviews found
-    """
-    # We accept a product or reviews URL directly. The internal raw scraper will
-    # follow the URL to the reviews section when necessary.
-    # Get max_reviews from env if not specified, cap at 300
-    if max_reviews is None:
+    last_err: Optional[Exception] = None
+    last_err_msg: Optional[str] = None
+    for shape_name, payload in attempts:
         try:
-            max_reviews = int(os.getenv("SCRAPER_MAX_REVIEWS", "300"))
-        except Exception:
-            max_reviews = 300
-    
-    # Hard cap at 300 reviews per scrape
-    max_reviews = min(int(max_reviews), 300)
-    
-    print(f"Fetching Amazon reviews for URL: {url} (max: {max_reviews})")
-    
-    # Report initial progress
-    if progress_cb:
-        try:
-            progress_cb(5)
-        except Exception:
-            pass
-    
-    # Check for cancellation
-    if cancel_cb:
-        try:
-            cancel_cb()
-        except Exception:
-            raise
-    
-    # Scrape reviews using internal raw scraper
-    product_meta = {}
-    reviews_raw = []
+            run = actor.call(run_input=payload)
+            break
+        except Exception as e:
+            # Capture and inspect error; retry with alternative shape if it's a validation error
+            last_err = e
+            last_err_msg = str(e)
+            # Common Apify validation messages reference "Field input.input is required" or similar
+            # We don't filter too aggressively; simply try the other shape next.
+            run = None
+    else:
+        # Both attempts failed; raise a clearer error that includes context
+        hint = (
+            "Attempted both payload shapes (flat and nested) and actor input validation still failed. "
+            f"Actor: {reviews_actor}. Last error: {last_err_msg}"
+        )
+        raise RuntimeError(hint) from last_err
+
+    dataset_id = run.get("defaultDatasetId") or (run.get("output") or {}).get("defaultDatasetId")
+    if not dataset_id:
+        raise RuntimeError("Apify run did not return a defaultDatasetId")
+    ds = client.dataset(dataset_id)
+    items = ds.list_items().items or []
+    # Quick scan across all returned items for any product-level hints (countReviews, price)
+    scanned_count_reviews = None
     try:
-        reviews_raw = _scrape_amazon_reviews_raw(
-            url,
-            max_reviews=max_reviews,
-            pause_seconds=1.5,  # Increased delay to avoid IP blocking
-            progress_cb=progress_cb,
-            cancel_cb=cancel_cb,
-        )
-    except Exception as e:
-        print(f"Scraper failed: {e}")
-        raise
+        for scan_item in items:
+            if not isinstance(scan_item, dict):
+                continue
+            for k in (
+                    "countReviews",
+                    "countRatings",
+                    "reviewsCount",
+                    "reviews_count",
+                    "reviewCount",
+                    "totalReviews",
+                    "reviewsTotal",
+                    "review_count",
+                    "numReviews",
+                    "total_review_count",
+                    "count_ratings",
+                    "count_reviews",
+                ):
+                try:
+                    v = scan_item.get(k)
+                    if not v and isinstance(scan_item.get("product"), dict):
+                        v = (scan_item.get("product") or {}).get(k)
+                    if v:
+                        try:
+                            scanned_count_reviews = int(v)
+                            break
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            if scanned_count_reviews:
+                break
+    except Exception:
+        scanned_count_reviews = None
 
-    # If the requests-based scraper returned nothing (or hit a captcha), try
-    # a Playwright-based renderer when available. Playwright is optional.
-    if not reviews_raw:
-        try:
-            try:
-                reviews_raw = _scrape_with_playwright(
-                    url,
-                    max_reviews=max_reviews,
-                    pause_seconds=1.5,
-                    progress_cb=progress_cb,
-                    cancel_cb=cancel_cb,
-                )
-                print(f"Playwright fallback fetched {len(reviews_raw)} reviews")
-            except ImportError:
-                print("Playwright not available; skipping rendered fallback")
-        except Exception as ex:
-            print(f"Playwright fallback failed: {ex}")
-    
-    # Convert to SingleReview objects
-    reviews_list = []
-    for review_data in reviews_raw:
-        if cancel_cb:
-            try:
-                cancel_cb()
-            except Exception:
-                raise
-        
-        # Extract text from body or title
-        text = (review_data.get("body") or review_data.get("title") or "").strip()
-        
-        # Parse rating
-        rating_val = None
-        rraw = review_data.get("rating")
-        try:
-            if isinstance(rraw, (int, float)):
-                rating_val = float(rraw)
-            elif isinstance(rraw, str):
-                rating_val = float(rraw.split()[0])
-        except Exception:
-            rating_val = None
-        
-        reviews_list.append(SingleReview(
-            review_text=text,
-            rating=rating_val,
-            review_date=review_data.get("date"),
-        ))
+    product_info: Dict[str, Any] = {"productName": None, "price": None}
+    if items:
+        first_item = items[0]
+        # Prefer explicit product-specific fields over generic 'title' which may be a review title.
+        def _from_product_dict(d: dict, *keys):
+            if not isinstance(d, dict):
+                return None
+            for k in keys:
+                v = d.get(k)
+                if v:
+                    return v
+            return None
 
-    if len(reviews_list) == 0:
-        # Signal failure upstream so the worker marks the task as FAILURE
-        raise ValueError(
-            "No reviews found. Possible causes: invalid/unsupported URL, reviews hidden behind CAPTCHA, or locale-specific page layout."
+        product_dict = first_item.get("product") or first_item.get("productInfo") or first_item.get("details")
+
+        pname = (
+            first_item.get("productTitle")
+            or first_item.get("productName")
+            or _from_product_dict(product_dict, "title", "name")
+            or first_item.get("itemName")
+            or first_item.get("asin")
         )
-    else:
-        print(f"Successfully fetched {len(reviews_list)} Amazon reviews")
-    
-    if progress_cb:
+        pprice = (
+            first_item.get("productPrice")
+            or first_item.get("currentPrice")
+            or first_item.get("price")
+            or _from_product_dict(product_dict, "price", "currentPrice", "amount")
+            or first_item.get("priceString")
+            or first_item.get("cost")
+            or first_item.get("amount")
+        )
+        # Prefer any scan-found countReviews across all items; otherwise check first_item
+        count_reviews = scanned_count_reviews
+        if count_reviews is None:
+            for k in ("countReviews", "countRatings", "reviewsCount", "reviews_count", "reviewCount", "totalReviews", "reviewsTotal", "review_count", "numReviews", "total_review_count", "count_ratings", "count_reviews"):
+                try:
+                    v = first_item.get(k)
+                    if not v and isinstance(first_item.get("product"), dict):
+                        v = (first_item.get("product") or {}).get(k)
+                    if v:
+                        count_reviews = int(v)
+                        break
+                except Exception:
+                    continue
+
+        # Normalize the extracted price
+        normalized_price = _normalize_price(pprice)
+        product_info = {"productName": pname, "price": normalized_price, "countReviews": count_reviews}
+    if max_reviews and isinstance(max_reviews, int) and max_reviews > 0:
+        items = items[: max_reviews]
+
+    # Best-effort fallback to fetch missing product info via a product actor
+    if not product_info.get("productName") or not (product_info.get("price") and product_info.get("price").get("amount") is not None):
         try:
-            progress_cb(100)
+            details = fetch_product_details(asin=asin, domain_code=domain_code)
+            if details:
+                if not product_info.get("productName"):
+                    product_info["productName"] = details.get("productName")
+                # details may return price as raw string or normalized; normalize consistently
+                dprice = details.get("price") if isinstance(details.get("price"), dict) else _normalize_price(details.get("price"))
+                if not (product_info.get("price") and product_info.get("price").get("amount") is not None):
+                    product_info["price"] = dprice
+                # propagate countReviews if available
+                if details.get("countReviews") and not product_info.get("countReviews"):
+                    product_info["countReviews"] = details.get("countReviews")
         except Exception:
             pass
-    
-    return product_meta, reviews_list
+
+    return items, product_info
 
 
+# Legacy wrappers removed: `_extract_asin` and `scrape_reviews` were unused in the
+# current codebase. The worker calls `fetch_amazon_reviews` directly, so keeping
+# this module focused on Apify helpers.
 
-
-
-def scrape_reviews(
-    url: str,
-    max_pages: int = 2,
-    *,
-    max_reviews: Optional[int] = None,
-    progress_cb: Optional[Callable[[int], None]] = None,
-    cancel_cb: Optional[Callable[[], None]] = None,
-) -> Tuple[Dict[str, Any], List[SingleReview]]:
-    """Generic function to scrape reviews based on the product URL.
-
-    Supports Amazon only via the built-in manual scraper.
-    Limited to 300 reviews per scrape to avoid IP blocking.
-
-    Args:
-        url: Product URL (Amazon)
-        max_pages: Ignored (pagination handled by the scraper)
-        max_reviews: Maximum number of reviews to fetch (capped at 300)
-        progress_cb: Optional callback for progress updates
-        cancel_cb: Optional callback to check for cancellation
-
-    Returns:
-        Tuple of (product_metadata, reviews_list)
-
-    Raises:
-        ValueError: If URL is not supported
-    """
-    # Get max_reviews from env if not specified, cap at 300
-    if max_reviews is None:
-        try:
-            max_reviews = int(os.getenv("SCRAPER_MAX_REVIEWS", "300"))
-        except Exception:
-            max_reviews = 300
-    
-    # Hard cap at 300 reviews per scrape
-    max_reviews = min(int(max_reviews), 300)
-    
-    url_lower = url.lower()
-
-    if "amazon" in url_lower:
-        return scrape_amazon_reviews(
-            url,
-            max_pages,
-            max_reviews=max_reviews,
-            progress_cb=progress_cb,
-            cancel_cb=cancel_cb
-        )
-    else:
-        raise ValueError(
-            f"Unsupported URL: {url}. "
-            f"Currently supported platform: Amazon. "
-            f"Please provide a valid Amazon product URL."
-        )
-
-
-def scrapeAmazon(productUrl: str, **kwargs):
-    """Alias for scrape_amazon_reviews (backward compatibility)."""
-    return scrape_amazon_reviews(productUrl, **kwargs)

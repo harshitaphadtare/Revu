@@ -41,3 +41,7 @@ async def init_db() -> None:
     db = await get_db()
     # users collection indexes
     await db.users.create_index("email", unique=True)
+    # analyses: ensure quick lookups by user and uniqueness by _id is implicit
+    await db.analyses.create_index("user_id")
+    # reviews: also index by user_id for filtering
+    await db.reviews.create_index("user_id")
