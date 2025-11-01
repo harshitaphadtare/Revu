@@ -1,8 +1,12 @@
-# Overview
+# Revu: Customer Insight & Analysis Platform 
 
 Revu is a product review intelligence platform that scrapes product reviews (currently works for [Amazon](https://amazon.com). Revu then analyzes sentiment and topics, and generates concise summaries and insight reports. It pairs a FastAPI backend (with Celery workers), a React + Vite frontend, Redis for queueing, and MongoDB for persistence.
 
 This is a quick developer and operator guide: setup, API examples, project layout, testing, deployment notes, and contribution guidelines.
+
+## Demo
+
+https://github.com/user-attachments/assets/ffa45540-2e78-4267-9ce3-f9411c6b0d23
 
 ## Project structure
 
